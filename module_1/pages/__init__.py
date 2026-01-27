@@ -27,3 +27,5 @@ def projects():
 def references():
     # Render the references.html template
     return render_template('references.html')
+
+## I used vscode buildin AI tool to help me write this code. I also, spent a lot of time to understand what this code means. Which helps me learn a lot faster. Thank you. 
