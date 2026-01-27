@@ -12,6 +12,7 @@
             <li><a href="{{ url_for('pages.home') }}" {% if request.endpoint == 'pages.home' %}class="active"{% endif %}>Home</a></li>
             <li><a href="{{ url_for('pages.contact') }}" {% if request.endpoint == 'pages.contact' %}class="active"{% endif %}>Contact</a></li>
             <li><a href="{{ url_for('pages.projects') }}" {% if request.endpoint == 'pages.projects' %}class="active"{% endif %}>Projects</a></li>
+            <li><a href="{{ url_for('pages.references') }}" {% if request.endpoint == 'pages.references' %}class="active"{% endif %}>References</a></li>
         </ul>
     </nav>
     <main>

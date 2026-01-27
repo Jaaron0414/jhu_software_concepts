@@ -13,3 +13,7 @@ def contact():
 @pages_bp.route('/projects')
 def projects():
     return render_template('projects.html')
+
+@pages_bp.route('/references')
+def references():
+    return render_template('references.html')
