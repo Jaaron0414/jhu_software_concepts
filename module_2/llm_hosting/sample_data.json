@@ -1,0 +1,32 @@
+[
+  {
+    "university": "JHU",
+    "program": "CS PhD",
+    "status": "Accepted",
+    "date": "2026-02-03"
+  },
+  {
+    "university": "MIT",
+    "program": "Computer Science",
+    "status": "Rejected",
+    "date": "2026-02-01"
+  },
+  {
+    "university": "Stanford",
+    "program": "Data Science MS",
+    "status": "Waitlisted",
+    "date": "2026-01-28"
+  },
+  {
+    "university": "Carnegie Melon",
+    "program": "Machine Learning",
+    "status": "Accepted",
+    "date": "2026-01-25"
+  },
+  {
+    "university": "Johns Hopkins University",
+    "program": "Computer Science PhD",
+    "status": "Accepted",
+    "date": "2026-02-02"
+  }
+]
