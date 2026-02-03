@@ -1,0 +1,38 @@
+================================================================================
+REFERENCES & ACKNOWLEDGMENTS
+================================================================================
+
+This assignment was completed with assistance from VSCode AI tools.
+
+TOOL USAGE
+----------
+- VSCode Copilot AI Assistant: Utilized for code assistance, debugging, and 
+  implementation support throughout the project development
+  
+  Assistance provided for:
+  • Initial project structure and setup
+  • BeautifulSoup HTML parsing and CSS selector strategies
+  • urllib implementation for HTTP requests and error handling
+  • Data cleaning functions and validation logic
+  • Debugging and resolving issues with HTML structure changes
+  • Code refactoring and optimization
+  • Writing comprehensive documentation
+
+
+WEBSITES REFERENCED
+-------------------
+- https://www.thegradcafe.com - Main data source for graduate admissions data
+- BeautifulSoup documentation: https://www.crummy.com/software/BeautifulSoup/
+- Python urllib documentation: https://docs.python.org/3/library/urllib.html
+- Python json documentation: https://docs.python.org/3/library/json.html
+
+
+ACADEMIC INTEGRITY STATEMENT
+-----------------------------
+This work represents my own understanding and implementation of the assignment
+requirements. While I received assistance from AI tools, all code logic, 
+decisions, and solutions reflect my learning and comprehension of the material.
+The use of AI assistance was for learning support and is disclosed here as per
+academic integrity guidelines.
+
+================================================================================
