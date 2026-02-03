@@ -7,6 +7,8 @@ JHED ID: [426C38]
 Module: Module 2 - Web Scraping & Data Cleaning
 Assignment: Gathering Graduate School Applicant Data from Grad Cafe
 Due Date: [02/01/2026, 11:59 PM]
+Reference: Vscode Build-in AI tools
+
 
 
 ================================================================================
@@ -132,10 +134,54 @@ Workflow:
 3. Results include 'cleaned_program' and 'cleaned_university' columns
 4. Original names preserved in 'original_program' for traceability
 
-Command to run LLM cleaning:
+PHASE 3: LLM-BASED STANDARDIZATION (llm_hosting)
+-------------------------------------------------
+
+Overview:
+The raw scraped data often has inconsistent program and university names:
+  • Same university: "JHU", "Johns Hopkins", "Johns Hopkins University", "John Hopkins"
+  • Same program: "CS", "Computer Science", "CS PhD", "Computer Science PhD"
+  
+This phase uses a local TinyLlama 1.1B model for fast, offline standardization.
+
+Features:
+  ✓ No external API calls required (fully local)
+  ✓ Flask server mode for batch processing
+  ✓ CLI mode for direct file processing
+  ✓ Fuzzy matching fallback (no LLM dependency)
+  ✓ Canonical lists for universities and programs
+  ✓ Preserves original names for traceability
+
+Installation:
   cd llm_hosting
   pip install -r requirements.txt
-  python app.py --file "../applicant_data.json" > output.json
+
+Usage (CLI mode - recommended):
+  python app.py --file ../applicant_data.json --stdout > ../applicant_data_llm.json
+  
+  Or with fuzzy matching only (no LLM download):
+  python app.py --file ../applicant_data.json --no-llm --stdout > ../applicant_data_llm.json
+
+Usage (Server mode):
+  python app.py --serve
+  
+  Then POST to http://localhost:8000/standardize with JSON data
+
+Output:
+  - Adds 'llm_generated_program' and 'llm_generated_university' columns
+  - Preserves all original fields for reproducibility
+  - Example mapping: {"program": "CS PhD", ...} → {"llm_generated_program": "Computer Science PhD", ...}
+
+Performance:
+  - Fuzzy matching only: ~100 entries/sec
+  - With LLM: ~10 entries/sec (first run downloads ~4GB model)
+  - For 30,000+ entries: ~5-10 minutes with LLM
+
+Configuration (environment variables):
+  MODEL_REPO: Hugging Face model repo (default: TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF)
+  MODEL_FILE: Model filename (default: tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf)
+  N_THREADS: CPU threads to use
+  N_GPU_LAYERS: GPU layers for acceleration (default: 0 = CPU only)
 
 
 ================================================================================
@@ -173,17 +219,24 @@ PROJECT STRUCTURE
 module_2/
 ├── scrape.py                      # Phase 1: Web scraping using urllib
 ├── clean.py                       # Phase 2: Data cleaning and standardization
-├── requirements.txt               # Dependencies (beautifulsoup4, lxml)
+├── requirements.txt               # Main dependencies (beautifulsoup4, lxml)
 ├── README.txt                     # This documentation file
 ├── README.md                      # Detailed technical documentation
+├── REFERENCES.txt                 # Acknowledgments and references
+├── REQUIREMENTS_VERIFICATION.txt  # Assignment requirements checklist
 ├── applicant_data.json            # Raw scraped data (30,000+ entries)
 ├── applicant_data_cleaned.json    # Cleaned data (before LLM processing)
 ├── robots_txt_verification.txt    # robots.txt compliance evidence
+├── run_full_scraper.py            # Script to run full 1500+ page scraper
+├── test_quick.py                  # Test scraper (5 pages)
+│
 └── llm_hosting/                   # Phase 3: LLM standardization module
-    ├── app.py                     # LLM service for name standardization
+    ├── app.py                     # TinyLlama-based standardizer
     ├── requirements.txt           # LLM dependencies
-    ├── canonical_universities.json # Standard university names
-    └── canonical_programs.json    # Standard program names
+    ├── README.md                  # LLM module documentation
+    ├── canon_universities.txt     # Canonical university names (37 entries)
+    ├── canon_programs.txt         # Canonical program names (65 entries)
+    └── sample_data.json           # Test data for LLM module
 
 
 ================================================================================
@@ -218,12 +271,21 @@ RUNNING PHASE 2 (Data Cleaning)
 
 RUNNING PHASE 3 (LLM Standardization)
   cd llm_hosting
-  python app.py --file "../applicant_data_cleaned.json" > output.json
+  pip install -r requirements.txt
+  
+  Option A - Fuzzy matching only (no LLM download):
+    python app.py --file "../applicant_data.json" --no-llm --stdout > ../applicant_data_llm.json
+    Time: ~1-2 minutes
+  
+  Option B - With TinyLlama LLM (first run downloads model):
+    python app.py --file "../applicant_data.json" --stdout > ../applicant_data_llm.json
+    Time: ~5-10 minutes (first run ~10 more minutes for model download)
   
   Output:
-    - Standardizes program and university names
-    - Adds cleaned_program and cleaned_university columns
-    - Generates final cleaned dataset
+    - Adds llm_generated_program and llm_generated_university columns
+    - Preserves all original fields
+    - Maps variations: "JHU" → "Johns Hopkins University", "CS PhD" → "Computer Science PhD"
+    - JSONL format (one JSON object per line)
 
 
 ================================================================================
@@ -487,7 +549,7 @@ and provides valuable insights into graduate school admission patterns.
 For detailed references and acknowledgments, see REFERENCES.txt
 
 ---
-Assignment completed: [Completion Date]
+Assignment completed: [02/03/2026]
 Submitted by: Aaron Xu
 Institution: Johns Hopkins University
 Course: Modern Software Concepts
