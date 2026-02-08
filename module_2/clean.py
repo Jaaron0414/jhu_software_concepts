@@ -39,18 +39,31 @@ def clean_data(raw_data: List[Dict[str, Any]],
     
     for i, entry in enumerate(raw_data):
         try:
-            # Create cleaned version, preserve original for traceability
+            # The program and university are already separated by the scraper
+            # But we may need to parse program/university if combined (fallback)
+            program = entry.get('program')
+            university = entry.get('university')
+            
+            # If program still has degree appended, try to extract it (fallback for old data)
+            if program and not entry.get('degree'):
+                # This shouldn't happen with new scraper, but keep for robustness
+                degree = entry.get('degree')
+            else:
+                degree = entry.get('degree')
+            
+            # Create cleaned version
             cleaned_entry = {
-                # Keep originals
+                # Original data for traceability
                 'original_program': entry.get('program'),
                 'original_status': entry.get('status'),
+                'original_university': entry.get('university'),
                 
-                # Cleaned versions
-                'program': entry.get('program'),
-                'university': None,
-                'cleaned_program': None,
-                'cleaned_university': None,
-                'degree': _extract_degree_info(entry.get('degree')),
+                # Cleaned main fields (already separated by scraper)
+                'program': program,
+                'university': university,
+                
+                # Standardized data
+                'degree': degree,
                 'status': _clean_status(entry.get('status')),
                 'date_added': _parse_date(entry.get('date')),
                 'gpa': _standardize_gpa(entry.get('gpa')),
@@ -59,6 +72,8 @@ def clean_data(raw_data: List[Dict[str, Any]],
                 'gre_aw': _standardize_gre_score(entry.get('gre_aw')),
                 'gre_subject': _standardize_gre_score(entry.get('gre_subject')),
                 'comments': _remove_html_tags(entry.get('comments')),
+                
+                # Metadata
                 'url': entry.get('url'),
                 'entry_link': entry.get('entry_link'),
                 'international': entry.get('international'),
@@ -66,11 +81,6 @@ def clean_data(raw_data: List[Dict[str, Any]],
                 'acceptance_date': entry.get('acceptance_date'),
                 'rejection_date': entry.get('rejection_date'),
             }
-            
-            # Try to split program and university
-            program, university = _parse_program_university(entry.get('program', ''))
-            cleaned_entry['program'] = program
-            cleaned_entry['university'] = university
             
             cleaned_data.append(cleaned_entry)
             
@@ -319,7 +329,7 @@ def load_cleaned_data(filename: str = 'applicant_data_cleaned.json') -> List[Dic
 def main():
     """Main function - run data cleaning."""
     # Load raw data
-    raw_data = json.load(open('applicant_data.json', 'r'))
+    raw_data = json.load(open('applicant_data.json', 'r', encoding='utf-8'))
     
     # Clean it
     cleaned = clean_data(raw_data, use_llm=False)

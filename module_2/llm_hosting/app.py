@@ -187,14 +187,22 @@ def process_file(input_file, output_mode='stdout', use_llm=True):
     # Output results
     if output_mode == 'stdout':
         for entry in processed:
-            print(json.dumps(entry, ensure_ascii=False))
+            # Use sys.stdout.buffer for proper UTF-8 output on Windows
+            line = json.dumps(entry, ensure_ascii=False) + '\n'
+            sys.stdout.buffer.write(line.encode('utf-8'))
     elif output_mode == 'jsonl':
         for entry in processed:
-            print(json.dumps(entry, ensure_ascii=False))
+            line = json.dumps(entry, ensure_ascii=False) + '\n'
+            sys.stdout.buffer.write(line.encode('utf-8'))
+    elif output_mode == 'file':
+        # Write directly to file with UTF-8 encoding
+        pass  # Handled in main()
     else:  # json
-        print(json.dumps(processed, ensure_ascii=False, indent=2))
+        output = json.dumps(processed, ensure_ascii=False, indent=2) + '\n'
+        sys.stdout.buffer.write(output.encode('utf-8'))
     
     print(f"Done! Processed {len(processed)} entries.", file=sys.stderr)
+    return processed
 
 
 def main():
@@ -215,8 +223,19 @@ def main():
     
     if args.file:
         # CLI mode
-        output_mode = 'stdout' if args.stdout else 'jsonl'
-        process_file(args.file, output_mode=output_mode, use_llm=not args.no_llm)
+        if args.output:
+            # Write directly to file
+            processed = process_file(args.file, output_mode='file', use_llm=not args.no_llm)
+            with open(args.output, 'w', encoding='utf-8') as f:
+                if args.format == 'json':
+                    json.dump(processed, f, ensure_ascii=False, indent=2)
+                else:  # jsonl
+                    for entry in processed:
+                        f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+            print(f"Saved to {args.output}", file=sys.stderr)
+        else:
+            output_mode = 'stdout' if args.stdout else 'jsonl'
+            process_file(args.file, output_mode=output_mode, use_llm=not args.no_llm)
     
     elif args.serve:
         # Flask server mode
