@@ -1,0 +1,22 @@
+REFERENCES - Module 3 Database Queries Assignment
+================================================
+
+AI Tools Used
+-------------
+This module was completed with the assistance of the following AI tools:
+
+1. Cursor with Claude 4 (Anthropic)
+   - Used for code generation, debugging, and SQL query development
+   - Assisted with Flask web application development
+   - Helped with data analysis and query optimization
+
+2. Gemini 3.0 (Google)
+   - Used for code review and suggestions
+   - Assisted with problem-solving approaches
+
+3. GitHub Copilot (Microsoft/OpenAI)
+   - Used for code completion and suggestions
+   - Assisted with boilerplate code generation
+
+Note: All AI-generated code was reviewed, tested, and modified as needed
+to ensure correctness and alignment with assignment requirements.
