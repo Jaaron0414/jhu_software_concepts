@@ -1,20 +1,20 @@
 """
-test_buttons.py - Button & Busy-State Behaviour Tests
+test_buttons.py - Tests for the Pull Data and Update Analysis buttons.
 
-Verifies:
-  - POST /pull_data returns 200 with {"ok": true} when idle
-  - POST /update_analysis returns 200 when idle
-  - Both endpoints return 409 with {"busy": true} when busy
+Checks that the two POST endpoints return the right status codes
+and JSON payloads, and that the busy-state gating (409) works.
+
+Author: Aaron Xu
 """
 
 import pytest
 
 
-# ---------- POST /pull_data ----------
+# --- Pull Data button ---
 
 @pytest.mark.buttons
 def test_pull_data_returns_200_when_idle(client):
-    """POST /pull_data returns 200 when not busy."""
+    """Normal case: pull_data should return 200 + ok=True."""
     resp = client.post('/pull_data')
     assert resp.status_code == 200
     body = resp.get_json()
@@ -23,7 +23,7 @@ def test_pull_data_returns_200_when_idle(client):
 
 @pytest.mark.buttons
 def test_pull_data_triggers_loader(client, db_url):
-    """After POST /pull_data, rows exist in the database."""
+    """After pulling, there should be rows in the applicants table."""
     import psycopg2
     client.post('/pull_data')
     conn = psycopg2.connect(db_url)
@@ -35,47 +35,51 @@ def test_pull_data_triggers_loader(client, db_url):
     assert count > 0
 
 
-# ---------- POST /update_analysis ----------
+# --- Update Analysis button ---
 
 @pytest.mark.buttons
 def test_update_analysis_returns_200_when_idle(client):
-    """POST /update_analysis returns 200 when not busy."""
+    """update_analysis should return 200 + ok=True normally."""
     resp = client.post('/update_analysis')
     assert resp.status_code == 200
     body = resp.get_json()
     assert body['ok'] is True
 
 
-# ---------- busy gating ----------
+# --- Busy-state gating (409 responses) ---
 
 @pytest.mark.buttons
 def test_pull_data_returns_409_when_busy(app, client):
-    """POST /pull_data returns 409 when a pull is already in progress."""
+    """If a pull is already running, we should get 409 + busy=True."""
     app.config['_busy'] = True
-    resp = client.post('/pull_data')
-    assert resp.status_code == 409
-    body = resp.get_json()
-    assert body['busy'] is True
-    assert body['ok'] is False
-    app.config['_busy'] = False     # cleanup
+    try:
+        resp = client.post('/pull_data')
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body['busy'] is True
+        assert body['ok'] is False
+    finally:
+        app.config['_busy'] = False
 
 
 @pytest.mark.buttons
 def test_update_analysis_returns_409_when_busy(app, client):
-    """POST /update_analysis returns 409 when busy."""
+    """Same idea — update_analysis is also blocked while busy."""
     app.config['_busy'] = True
-    resp = client.post('/update_analysis')
-    assert resp.status_code == 409
-    body = resp.get_json()
-    assert body['busy'] is True
-    app.config['_busy'] = False
+    try:
+        resp = client.post('/update_analysis')
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body['busy'] is True
+    finally:
+        app.config['_busy'] = False
 
 
-# ---------- /status endpoint ----------
+# --- Status endpoint ---
 
 @pytest.mark.buttons
 def test_status_returns_not_running(client):
-    """GET /status reports is_running=false when idle."""
+    """When nothing is happening, /status should say is_running=false."""
     resp = client.get('/status')
     assert resp.status_code == 200
     assert resp.get_json()['is_running'] is False
@@ -83,8 +87,10 @@ def test_status_returns_not_running(client):
 
 @pytest.mark.buttons
 def test_status_returns_running_when_busy(app, client):
-    """GET /status reports is_running=true when busy."""
+    """If we manually set _busy, /status should report it."""
     app.config['_busy'] = True
-    resp = client.get('/status')
-    assert resp.get_json()['is_running'] is True
-    app.config['_busy'] = False
+    try:
+        resp = client.get('/status')
+        assert resp.get_json()['is_running'] is True
+    finally:
+        app.config['_busy'] = False

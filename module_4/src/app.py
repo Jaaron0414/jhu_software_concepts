@@ -1,16 +1,17 @@
 """
-app.py - Flask Web Application for Grad Cafe Data Analysis
+app.py - Flask web application for Grad Cafe data analysis.
 
-Provides a web interface to view graduate school admissions analysis.
-Supports pulling new data and refreshing analysis results.
+This is the main web server that shows the analysis dashboard.
+Users can pull new data from Grad Cafe and refresh results.
 
 Routes:
-    GET  /                  - Main analysis page
-    POST /pull_data         - Start data pull (scraping + loading)
-    POST /update_analysis   - Refresh analysis results
-    GET  /status            - Check if a pull is in progress
+    GET  /                 - analysis dashboard
+    POST /pull_data        - kick off a background scrape + load
+    POST /update_analysis  - refresh results (no-op when busy)
+    GET  /status           - JSON busy check for frontend polling
 
-Author: Student
+Author: Aaron Xu
+Course: JHU Modern Software Concepts
 Date: February 2026
 """
 
@@ -20,13 +21,12 @@ import threading
 import psycopg2
 from flask import Flask, render_template, jsonify
 
+# NOTE: get_database_url is duplicated in load_data.py and query_data.py.
+# Ideally we'd have a shared config module, but keeping it simple for now.
+
 
 def get_database_url():
-    """Return the DATABASE_URL from environment or a sensible default.
-
-    Returns:
-        str: PostgreSQL connection string.
-    """
+    """Read DATABASE_URL from the environment, fall back to local default."""
     return os.environ.get(
         'DATABASE_URL',
         'postgresql://postgres:196301@localhost:5432/gradcafe'
@@ -34,28 +34,16 @@ def get_database_url():
 
 
 def get_db_connection(database_url=None):
-    """Create and return a new database connection.
-
-    Args:
-        database_url: Optional connection string override.
-
-    Returns:
-        psycopg2 connection object.
-    """
+    """Open a psycopg2 connection to the given (or default) database."""
     url = database_url or get_database_url()
     return psycopg2.connect(url)
 
 
 def run_analysis_queries(database_url=None):
-    """Execute all analysis queries and return a results dictionary.
+    """Run all nine required queries plus two custom ones.
 
-    The dictionary keys match the template variables used in index.html.
-
-    Args:
-        database_url: Optional connection string override.
-
-    Returns:
-        dict: Analysis results with keys like q1_fall_2026_count, etc.
+    Returns a dict whose keys line up with the Jinja template variables
+    in index.html.  If database_url is None we use the environment default.
     """
     results = {}
     conn = get_db_connection(database_url)
@@ -216,38 +204,22 @@ def run_analysis_queries(database_url=None):
 
 
 def _default_scraper():
-    """Default scraper — imports and runs the scrape module.
-
-    Returns:
-        list: Raw applicant records from Grad Cafe.
-    """
+    """Import the scrape module and pull ~10 pages of results."""
     from src.scrape import scrape_data
     return scrape_data(result_type='all', num_pages=10, delay=0.5)
 
 
 def _default_loader(records, database_url):
-    """Default loader — imports and runs the load_data module.
-
-    Args:
-        records: List of applicant dicts.
-        database_url: PostgreSQL connection string.
-    """
+    """Import load_data and bulk-insert the records."""
     from src.load_data import insert_records
     insert_records(records, database_url)
 
 
 def create_app(config=None):
-    """Flask application factory.
+    """Application factory — creates and configures the Flask app.
 
-    Args:
-        config: Optional dict with configuration overrides.
-            DATABASE_URL   - PostgreSQL connection string
-            SCRAPER_FUNC   - callable() -> list of dicts
-            LOADER_FUNC    - callable(records, database_url)
-            TESTING        - run pull synchronously when True
-
-    Returns:
-        Configured Flask application instance.
+    Pass a config dict to override DATABASE_URL, SCRAPER_FUNC,
+    LOADER_FUNC, or TESTING (synchronous pull for test assertions).
     """
     app = Flask(
         __name__,
@@ -263,21 +235,21 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    # ------------------------------------------------------------------
-    # Routes
-    # ------------------------------------------------------------------
+    # --- Routes ---
+
     @app.route('/')
     def index():
-        """Render the main analysis page."""
+        """Main page — runs all queries and renders the dashboard."""
         try:
             results = run_analysis_queries(app.config['DATABASE_URL'])
         except Exception:
+            # If the DB isn't set up yet, just show empty results
             results = {}
         return render_template('index.html', results=results)
 
     @app.route('/pull_data', methods=['POST'])
     def pull_data():
-        """Start a data pull.  Returns 409 if already busy."""
+        """Kick off a data pull. Returns 409 if one is already running."""
         if app.config['_busy']:
             return jsonify({'ok': False, 'busy': True}), 409
 
@@ -305,21 +277,21 @@ def create_app(config=None):
 
     @app.route('/update_analysis', methods=['POST'])
     def update_analysis():
-        """Refresh analysis results.  Returns 409 if busy."""
+        """Re-render analysis. Returns 409 when a pull is in progress."""
         if app.config['_busy']:
             return jsonify({'ok': False, 'busy': True}), 409
         return jsonify({'ok': True}), 200
 
     @app.route('/status')
     def status():
-        """Return current busy status as JSON."""
+        """Simple JSON endpoint so the frontend can poll busy state."""
         return jsonify({'is_running': app.config['_busy']})
 
     return app
 
 
 def main():
-    """Run the Flask development server."""
+    """Start the dev server on port 5000."""
     application = create_app()
     application.run(debug=True, port=5000)
 

@@ -1,7 +1,10 @@
 """
-test_scrape.py - Scrape Module Tests
+test_scrape.py - Tests for the web scraper.
 
-Achieves coverage for src/scrape.py by mocking network calls.
+All network calls are mocked (we never actually hit Grad Cafe).
+Uses fake HTML that mirrors the real page structure.
+
+Author: Aaron Xu
 """
 
 import json
@@ -21,9 +24,7 @@ from src.scrape import (
 )
 
 
-# ---------------------------------------------------------------------------
-# HTML fixtures
-# ---------------------------------------------------------------------------
+# --- Fake HTML that looks like a real Grad Cafe page ---
 
 FAKE_HTML = """
 <html><body>
@@ -54,13 +55,11 @@ EMPTY_HTML = "<html><body><table><tbody></tbody></table></body></html>"
 NO_TBODY_HTML = "<html><body></body></html>"
 
 
-# ---------------------------------------------------------------------------
-# extract_entries / parse tests
-# ---------------------------------------------------------------------------
+# --- Parsing tests ---
 
 @pytest.mark.web
 def test_extract_entries_basic():
-    """extract_entries returns entries from valid HTML."""
+    """Should pull out one entry from our fake HTML."""
     entries = extract_entries(FAKE_HTML)
     assert len(entries) == 1
     e = entries[0]
@@ -92,7 +91,7 @@ def test_extract_entries_no_tbody():
 
 @pytest.mark.web
 def test_extract_entries_few_tds():
-    """extract_entries skips rows with fewer than 4 tds."""
+    """Rows with fewer than 4 <td>s should be skipped."""
     html = """
     <html><body><table><tbody>
     <tr><td>Only one</td></tr>
@@ -104,7 +103,7 @@ def test_extract_entries_few_tds():
 
 @pytest.mark.web
 def test_parse_main_row_no_spans():
-    """parse_main_row handles td without spans."""
+    """If there are no <span>s, program text comes from the whole <td>."""
     from bs4 import BeautifulSoup
     html = """
     <tr>
@@ -159,7 +158,7 @@ def test_parse_additional_row_international():
 
 @pytest.mark.web
 def test_parse_additional_row_gre_out_of_range():
-    """GRE scores outside 130-170 are ignored."""
+    """A GRE score of 50 is way out of range and should be ignored."""
     from bs4 import BeautifulSoup
     html = """
     <tr class="tw-border-none">
@@ -204,9 +203,7 @@ def test_parse_additional_row_short_comment():
     assert entry['comments'] is None
 
 
-# ---------------------------------------------------------------------------
-# clean_text
-# ---------------------------------------------------------------------------
+# --- clean_text helper ---
 
 @pytest.mark.web
 def test_clean_text_strips_html():
@@ -222,9 +219,7 @@ def test_clean_text_none():
     assert clean_text('   ') is None
 
 
-# ---------------------------------------------------------------------------
-# save_data / load_data
-# ---------------------------------------------------------------------------
+# --- File I/O ---
 
 @pytest.mark.web
 def test_save_and_load_data(tmp_path):
@@ -250,18 +245,19 @@ def test_save_data_creates_directory(tmp_path):
     assert load_data(fp) == [1, 2]
 
 
-# ---------------------------------------------------------------------------
-# scrape_data (mocked network)
-# ---------------------------------------------------------------------------
+# --- scrape_data with mocked network ---
 
 @pytest.mark.web
 def test_scrape_data_success(monkeypatch):
-    """scrape_data returns entries when pages respond."""
+    """First page has data, second page is empty -> should get 1 entry."""
     monkeypatch.setattr('src.scrape.time.sleep', lambda _: None)
 
     class FakeResp:
+        """Minimal file-like that urlopen returns."""
+        def __init__(self, html):
+            self._html = html
         def read(self):
-            return FAKE_HTML.encode()
+            return self._html.encode()
         def __enter__(self):
             return self
         def __exit__(self, *a):
@@ -271,15 +267,8 @@ def test_scrape_data_success(monkeypatch):
     def fake_urlopen(req, timeout=15):
         call_count['n'] += 1
         if call_count['n'] > 1:
-            # Return empty page on second call to stop scraping
-            return type(FakeResp)(
-                'E', (), {
-                    'read': lambda self: EMPTY_HTML.encode(),
-                    '__enter__': lambda self: self,
-                    '__exit__': lambda self, *a: None,
-                }
-            )()
-        return FakeResp()
+            return FakeResp(EMPTY_HTML)   # empty page stops the loop
+        return FakeResp(FAKE_HTML)
 
     monkeypatch.setattr('src.scrape.urlopen', fake_urlopen)
     data = scrape_data(num_pages=2, delay=0)
@@ -288,7 +277,7 @@ def test_scrape_data_success(monkeypatch):
 
 @pytest.mark.web
 def test_scrape_data_http_404_stops(monkeypatch):
-    """scrape_data stops on HTTPError 404."""
+    """A 404 means there are no more pages; scraper should stop."""
     monkeypatch.setattr('src.scrape.time.sleep', lambda _: None)
 
     def fake_urlopen(req, timeout=15):
@@ -303,7 +292,7 @@ def test_scrape_data_http_404_stops(monkeypatch):
 
 @pytest.mark.web
 def test_scrape_data_http_500_retries(monkeypatch):
-    """scrape_data retries on server errors; stops after 5 consecutive."""
+    """Server errors should be retried; after 5 in a row, give up."""
     monkeypatch.setattr('src.scrape.time.sleep', lambda _: None)
 
     def fake_urlopen(req, timeout=15):
@@ -318,7 +307,7 @@ def test_scrape_data_http_500_retries(monkeypatch):
 
 @pytest.mark.web
 def test_scrape_data_url_error(monkeypatch):
-    """scrape_data handles URLError and stops after threshold."""
+    """Network errors (URLError) should also be handled gracefully."""
     monkeypatch.setattr('src.scrape.time.sleep', lambda _: None)
 
     def fake_urlopen(req, timeout=15):
@@ -331,7 +320,7 @@ def test_scrape_data_url_error(monkeypatch):
 
 @pytest.mark.web
 def test_scrape_data_generic_exception(monkeypatch):
-    """scrape_data handles unexpected exceptions."""
+    """Random exceptions shouldn't crash the whole scraper."""
     monkeypatch.setattr('src.scrape.time.sleep', lambda _: None)
 
     def fake_urlopen(req, timeout=15):
@@ -344,10 +333,12 @@ def test_scrape_data_generic_exception(monkeypatch):
 
 @pytest.mark.web
 def test_scrape_data_with_decision_filter(monkeypatch):
-    """scrape_data passes decision parameter for filtered results."""
+    """Passing result_type='accepted' should add a decision param to the URL."""
     monkeypatch.setattr('src.scrape.time.sleep', lambda _: None)
 
     class FakeResp:
+        def __init__(self):
+            pass
         def read(self):
             return EMPTY_HTML.encode()
         def __enter__(self):

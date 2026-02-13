@@ -1,10 +1,11 @@
 """
-scrape.py - Web scraper for Grad Cafe data
+scrape.py - Web scraper for thegradcafe.com.
 
-Scrapes graduate school admission results from thegradcafe.com
-using urllib (built-in) and BeautifulSoup for HTML parsing.
+Uses urllib (built-in) for HTTP requests and BeautifulSoup for
+HTML parsing.  Rate-limits requests to be polite to the server.
 
-Author: Student
+Author: Aaron Xu
+Course: JHU Modern Software Concepts
 Date: February 2026
 """
 
@@ -22,16 +23,10 @@ from bs4 import BeautifulSoup
 
 def scrape_data(result_type='all', num_pages=500,
                 start_page=1, delay=0.5):
-    """Scrape Grad Cafe list pages for admission entries.
+    """Scrape Grad Cafe list pages and return a list of entry dicts.
 
-    Args:
-        result_type: Filter — 'all', 'accepted', 'rejected', 'waitlisted'.
-        num_pages: Number of list pages to request.
-        start_page: Page number to begin from.
-        delay: Base delay (seconds) between requests.
-
-    Returns:
-        list[dict]: Parsed applicant entries.
+    Each page has ~20 entries.  We stop early if a page comes back
+    empty or we hit too many consecutive errors.
     """
     base_url = "https://www.thegradcafe.com/survey/index.php"
     decision_map = {
@@ -84,14 +79,7 @@ def scrape_data(result_type='all', num_pages=500,
 
 
 def extract_entries(html):
-    """Parse HTML and return a list of applicant dicts.
-
-    Args:
-        html: Raw HTML string of a Grad Cafe list page.
-
-    Returns:
-        list[dict]: Extracted entries.
-    """
+    """Parse a Grad Cafe list page and pull out individual entries."""
     entries = []
     soup = BeautifulSoup(html, 'html.parser')
     tbody = soup.find('tbody')
@@ -120,15 +108,7 @@ def extract_entries(html):
 
 
 def parse_main_row(row, tds):
-    """Parse the primary data row of one entry.
-
-    Args:
-        row: The <tr> BeautifulSoup tag.
-        tds: List of <td> tags within the row.
-
-    Returns:
-        dict or None.
-    """
+    """Pull university, program, degree, status, and link from the main row."""
     entry = {
         'university': None, 'program': None, 'degree': None,
         'date': None, 'status': None, 'gpa': None,
@@ -185,14 +165,7 @@ def parse_main_row(row, tds):
 
 
 def parse_additional_row(row, entry):
-    """Parse continuation rows that hold tags or comments.
-
-    Modifies *entry* in place.
-
-    Args:
-        row: A <tr> tag with class ``tw-border-none``.
-        entry: The dict being built for this applicant.
-    """
+    """Parse the extra rows that hold tags (GPA, season, GRE) and comments."""
     tag_divs = row.find_all(
         'div', class_=lambda x: x and 'tw-inline-flex' in x
     )
@@ -250,14 +223,7 @@ def parse_additional_row(row, entry):
 
 
 def clean_text(text):
-    """Strip HTML tags and normalise whitespace.
-
-    Args:
-        text: Raw text (may be None).
-
-    Returns:
-        Cleaned string or None.
-    """
+    """Strip HTML tags and collapse whitespace. Returns None for empty."""
     if not text:
         return None
     text = re.sub(r'<[^>]+>', '', text)
@@ -266,15 +232,7 @@ def clean_text(text):
 
 
 def save_data(data, filename='applicant_data.json'):
-    """Write *data* to a JSON file.
-
-    Args:
-        data: Serialisable Python object.
-        filename: Destination path.
-
-    Returns:
-        str: The filename written.
-    """
+    """Dump data to a JSON file (creates parent dirs if needed)."""
     directory = os.path.dirname(filename)
     if directory and not os.path.exists(directory):
         os.makedirs(directory)
@@ -284,14 +242,7 @@ def save_data(data, filename='applicant_data.json'):
 
 
 def load_data(filename='applicant_data.json'):
-    """Read applicant data from a JSON file.
-
-    Args:
-        filename: Path to JSON file.
-
-    Returns:
-        list: Parsed data, or empty list if file missing.
-    """
+    """Load data from a JSON file. Returns [] if the file is missing."""
     if not os.path.exists(filename):
         return []
     with open(filename, 'r', encoding='utf-8') as fh:

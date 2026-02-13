@@ -1,86 +1,77 @@
-# Module 4 — Pytest & Sphinx
+# Module 4 — Testing & Documentation
 
-JHU Modern Software Concepts — Testing and Documentation Assignment
+**Author:** Aaron Xu  
+**Course:** JHU Modern Software Concepts (Spring 2026)
 
-## Overview
+## What this is
 
-This module adds a comprehensive **pytest test suite** and **Sphinx documentation** to the Grad Cafe analytics application built in Module 3.
+This module adds a full **pytest** test suite and **Sphinx** documentation on
+top of the Grad Cafe analytics app from Module 3.  The test suite covers all
+source files in `src/` at 100% line coverage.
 
-## Directory Structure
+## Project layout
 
 ```
 module_4/
-  src/                   # Application code
-    app.py               # Flask web application (create_app factory)
-    scrape.py            # Grad Cafe web scraper
-    clean.py             # Data cleaning utilities
-    load_data.py         # PostgreSQL data loader
-    query_data.py        # SQL query functions
+  src/
+    app.py            # Flask web app (factory pattern)
+    scrape.py         # Grad Cafe scraper (urllib + BeautifulSoup)
+    clean.py          # Data cleaning / normalization
+    load_data.py      # Bulk-insert into PostgreSQL
+    query_data.py     # Nine required queries + two custom
     templates/
-      index.html         # Analysis dashboard template
-  tests/                 # Pytest test suite
-    conftest.py          # Shared fixtures
-    test_flask_page.py   # Flask route & page rendering tests
-    test_buttons.py      # Button endpoint & busy-state tests
-    test_analysis_format.py  # Answer labels & percentage formatting
-    test_db_insert.py    # Database insert, idempotency, queries
-    test_integration_end_to_end.py  # End-to-end flow tests
-    test_scrape.py       # Scraper module tests
-    test_clean.py        # Cleaning module tests
-  docs/                  # Sphinx documentation source
-  pytest.ini             # Pytest config (markers, coverage)
-  requirements.txt       # Python dependencies
-  README.md              # This file
+      index.html      # Dashboard page
+  tests/
+    conftest.py       # Shared fixtures (test DB, sample records)
+    test_*.py         # One file per concern (see markers below)
+  docs/               # Sphinx .rst source files
+  pytest.ini          # Markers, coverage config
+  requirements.txt
 ```
 
-## Quick Start
+## Getting started
 
 ```bash
 cd module_4
 python -m venv .venv
-.venv\Scripts\activate         # Linux/Mac: source .venv/bin/activate
+.venv\Scripts\activate       # or source .venv/bin/activate on Mac/Linux
 pip install -r requirements.txt
 
-# Run the app
-python -m src.app
-# Visit http://localhost:5000
+# Start the Flask app
+python -m src.app            # http://localhost:5000
 
-# Run the tests
+# Run tests (needs a local Postgres)
 pytest
 ```
 
-## Environment Variables
+## Environment variables
 
-| Variable           | Default                                                     |
-|--------------------|-------------------------------------------------------------|
-| `DATABASE_URL`     | `postgresql://postgres:196301@localhost:5432/gradcafe`       |
-| `TEST_DATABASE_URL`| `postgresql://postgres:196301@localhost:5432/gradcafe_test`  |
+- `DATABASE_URL` — Postgres connection string (defaults to `postgresql://postgres:196301@localhost:5432/gradcafe`)
+- `TEST_DATABASE_URL` — same, but for the test database (defaults to `gradcafe_test`)
 
-## Test Markers
+## Pytest markers
 
-| Marker        | Scope                                        |
-|---------------|----------------------------------------------|
-| `web`         | Flask routes, page rendering, HTML structure  |
-| `buttons`     | Pull Data / Update Analysis button endpoints  |
-| `analysis`    | Answer labels, percentage formatting          |
-| `db`          | Database schema, inserts, selects             |
-| `integration` | End-to-end pull → update → render flows       |
-
-Run all tests:
+| Marker        | What it covers                                |
+|---------------|-----------------------------------------------|
+| `web`         | Flask routes, page rendering, scraper/cleaner |
+| `buttons`     | POST endpoints and busy-state gating          |
+| `analysis`    | "Answer:" labels, decimal formatting          |
+| `db`          | Inserts, idempotency, query functions         |
+| `integration` | End-to-end pull -> update -> render           |
 
 ```bash
-pytest -m "web or buttons or analysis or db or integration"
+# run just one category
+pytest -m db
 ```
 
-## Documentation
-
-Sphinx docs are located in `docs/`. To build:
+## Building the docs
 
 ```bash
 cd docs
 sphinx-build -b html . _build/html
+# open _build/html/index.html
 ```
 
-## References
+## Acknowledgments
 
-This module was completed with the help of AI tools: Cursor (Claude 4), Gemini 3.0, and GitHub Copilot.
+Completed with assistance from Cursor (Claude), Gemini, and GitHub Copilot.

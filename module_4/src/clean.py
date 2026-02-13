@@ -1,13 +1,12 @@
 """
-clean.py - Data cleaning and standardisation module
+clean.py - Data cleaning and standardization.
 
-Provides functions to clean raw Grad Cafe applicant data:
-  - Standardise GPA, GRE scores, dates
-  - Separate program and university names
-  - Remove residual HTML
-  - Standardise status labels
+Takes raw scraped data and normalizes it: cleans GPA/GRE values,
+converts dates to ISO format, strips leftover HTML, and
+standardizes status labels (Accepted/Rejected/Waitlisted).
 
-Author: Student
+Author: Aaron Xu
+Course: JHU Modern Software Concepts
 Date: February 2026
 """
 
@@ -18,15 +17,7 @@ from datetime import datetime
 
 
 def clean_data(raw_data, use_llm=False):
-    """Clean a list of raw applicant dicts.
-
-    Args:
-        raw_data: List of dicts from the scraper.
-        use_llm: If True, print a reminder about LLM cleaning.
-
-    Returns:
-        list[dict]: Cleaned applicant records.
-    """
+    """Run all cleaning steps on a list of raw applicant dicts."""
     cleaned = []
 
     for entry in raw_data:
@@ -60,16 +51,7 @@ def clean_data(raw_data, use_llm=False):
 
 
 def parse_program_university(text):
-    """Split a combined program/university string.
-
-    Tries patterns: 'X at Y', 'X (Y)', 'X, Y'.
-
-    Args:
-        text: Combined string, or None.
-
-    Returns:
-        (program, university) tuple; either may be None.
-    """
+    """Try to split 'Program at University' or 'Program, University'."""
     if not text:
         return None, None
 
@@ -91,14 +73,7 @@ def parse_program_university(text):
 
 
 def standardize_gre(score):
-    """Clean a GRE score string, returning digits or None.
-
-    Args:
-        score: Raw score string.
-
-    Returns:
-        str of digits or None.
-    """
+    """Extract digits from a GRE score string. Returns None if invalid."""
     if not score or not isinstance(score, str):
         return None
     digits = re.sub(r'[^\d]', '', score.strip())
@@ -111,14 +86,7 @@ def standardize_gre(score):
 
 
 def standardize_gpa(gpa):
-    """Clean a GPA value, returning a formatted string or None.
-
-    Args:
-        gpa: Raw GPA string.
-
-    Returns:
-        str like '3.95' or None.
-    """
+    """Parse a GPA string and format it to two decimals (0-4.0 range)."""
     if not gpa or not isinstance(gpa, str):
         return None
     match = re.search(r'(\d+\.?\d*)', gpa.strip())
@@ -130,15 +98,7 @@ def standardize_gpa(gpa):
 
 
 def clean_status(status):
-    """Standardise an admission status string.
-
-    Args:
-        status: Raw status text.
-
-    Returns:
-        One of 'Accepted', 'Rejected', 'Waitlisted', or the
-        original (stripped) string.
-    """
+    """Map raw status text to Accepted / Rejected / Waitlisted."""
     if not status:
         return None
     upper = status.upper().strip()
@@ -152,16 +112,7 @@ def clean_status(status):
 
 
 def parse_date(date_str):
-    """Convert a date string to ISO format (YYYY-MM-DD).
-
-    Supports MM/DD/YYYY and YYYY-MM-DD.
-
-    Args:
-        date_str: Raw date string.
-
-    Returns:
-        str in ISO format, or None.
-    """
+    """Convert MM/DD/YYYY or YYYY-MM-DD to ISO format. Returns None on failure."""
     if not date_str or not isinstance(date_str, str):
         return None
     date_str = date_str.strip()
@@ -188,14 +139,7 @@ def parse_date(date_str):
 
 
 def remove_html(text):
-    """Strip HTML tags and entities from *text*.
-
-    Args:
-        text: Raw text that may contain HTML.
-
-    Returns:
-        Cleaned string, or None.
-    """
+    """Strip HTML tags and decode common entities."""
     if not text:
         return None
     text = re.sub(r'<[^>]+>', '', text)
@@ -209,15 +153,7 @@ def remove_html(text):
 
 
 def save_cleaned_data(data, filename='applicant_data_cleaned.json'):
-    """Write cleaned data to a JSON file.
-
-    Args:
-        data: Cleaned applicant list.
-        filename: Destination path.
-
-    Returns:
-        str: The filename written.
-    """
+    """Dump cleaned data to JSON."""
     directory = os.path.dirname(filename)
     if directory and not os.path.exists(directory):
         os.makedirs(directory)
@@ -227,14 +163,7 @@ def save_cleaned_data(data, filename='applicant_data_cleaned.json'):
 
 
 def load_cleaned_data(filename='applicant_data_cleaned.json'):
-    """Load cleaned data from a JSON file.
-
-    Args:
-        filename: Path to JSON file.
-
-    Returns:
-        list: Parsed data, or empty list if missing.
-    """
+    """Load cleaned data from JSON. Returns [] if missing."""
     if not os.path.exists(filename):
         return []
     with open(filename, 'r', encoding='utf-8') as fh:

@@ -1,9 +1,10 @@
 """
-test_analysis_format.py - Analysis Formatting Tests
+test_analysis_format.py - Check that the rendered analysis looks right.
 
-Verifies:
-  - Every answer on the page is labeled with 'Answer:'
-  - Percentages are displayed with exactly two decimal places
+The assignment requires "Answer:" labels and two-decimal percentages,
+so that's what these tests enforce.
+
+Author: Aaron Xu
 """
 
 import re
@@ -13,7 +14,7 @@ from bs4 import BeautifulSoup
 
 @pytest.mark.analysis
 def test_all_answers_have_label(seeded_client):
-    """Every .answer div starts with 'Answer:'."""
+    """Every .answer div should start with 'Answer:'."""
     soup = BeautifulSoup(
         seeded_client.get('/').data, 'html.parser'
     )
@@ -27,9 +28,8 @@ def test_all_answers_have_label(seeded_client):
 
 @pytest.mark.analysis
 def test_percentages_have_two_decimals(seeded_client):
-    """Any percentage on the page uses exactly two decimal places."""
+    """Percentages like 40.00% must always have exactly two decimals."""
     html = seeded_client.get('/').data.decode()
-    # Match patterns like "40.00%", "3.95%" — digits.digits%
     percentages = re.findall(r'(\d+\.\d+)%', html)
     assert len(percentages) >= 1, "No percentages found on the page"
     for pct in percentages:
@@ -41,7 +41,7 @@ def test_percentages_have_two_decimals(seeded_client):
 
 @pytest.mark.analysis
 def test_page_shows_at_least_one_numeric_answer(seeded_client):
-    """The page contains at least one numeric answer value."""
+    """There should be at least one number after an 'Answer:' label."""
     html = seeded_client.get('/').data.decode()
     # Look for digits that follow "Answer:"
     assert re.search(r'Answer:\s*\d', html), (
@@ -51,7 +51,7 @@ def test_page_shows_at_least_one_numeric_answer(seeded_client):
 
 @pytest.mark.analysis
 def test_answer_count_matches_questions(seeded_client):
-    """There should be at least 11 Answer: labels (Q1-Q9 + 2 custom)."""
+    """We have 9 main questions + 2 custom = at least 11 'Answer:' labels."""
     html = seeded_client.get('/').data.decode()
     count = html.count('Answer:')
     assert count >= 11, f"Expected >=11 Answer: labels, found {count}"

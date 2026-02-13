@@ -1,11 +1,10 @@
 """
-test_db_insert.py - Database Write Tests
+test_db_insert.py - Database write and query tests.
 
-Verifies:
-  - After POST /pull_data, rows with required fields exist in the DB
-  - Duplicate pulls do not create duplicate rows (idempotency)
-  - Query functions return dicts with expected keys
-  - load_data helper functions work correctly
+Covers the load_data module (inserting records, idempotency) and
+the query_data module (all nine queries plus two custom ones).
+
+Author: Aaron Xu
 """
 
 import pytest
@@ -14,11 +13,11 @@ import psycopg2
 from tests.conftest import SAMPLE_RECORDS
 
 
-# ---------- insert on pull ----------
+# --- Inserts via /pull_data ---
 
 @pytest.mark.db
 def test_insert_rows_exist_after_pull(client, db_url):
-    """After POST /pull_data, new rows appear in the applicants table."""
+    """After pulling, each sample record should be in the DB."""
     resp = client.post('/pull_data')
     assert resp.status_code == 200
 
@@ -33,7 +32,7 @@ def test_insert_rows_exist_after_pull(client, db_url):
 
 @pytest.mark.db
 def test_required_fields_not_null(client, db_url):
-    """Inserted rows have non-null url and status fields."""
+    """url, status, term, and degree should never be NULL."""
     client.post('/pull_data')
 
     conn = psycopg2.connect(db_url)
@@ -52,11 +51,11 @@ def test_required_fields_not_null(client, db_url):
         assert degree is not None
 
 
-# ---------- idempotency / constraints ----------
+# --- Idempotency (UNIQUE constraint on url) ---
 
 @pytest.mark.db
 def test_duplicate_pull_no_duplicates(client, db_url):
-    """Pulling twice with the same data does not duplicate rows."""
+    """Pulling the same data twice should not create duplicate rows."""
     client.post('/pull_data')
     client.post('/pull_data')
 
@@ -70,11 +69,11 @@ def test_duplicate_pull_no_duplicates(client, db_url):
     assert count == len(SAMPLE_RECORDS)
 
 
-# ---------- query function returns expected keys ----------
+# --- Analysis query results ---
 
 @pytest.mark.db
 def test_run_analysis_queries_keys(client, db_url):
-    """run_analysis_queries returns a dict with expected keys."""
+    """The result dict must contain every key the template uses."""
     client.post('/pull_data')
 
     from src.app import run_analysis_queries
@@ -101,26 +100,22 @@ def test_run_analysis_queries_keys(client, db_url):
 
 @pytest.mark.db
 def test_analysis_values_correct(client, db_url):
-    """Spot-check a few analysis values with known test data."""
+    """Spot-check counts against our known sample data."""
     client.post('/pull_data')
     from src.app import run_analysis_queries
     r = run_analysis_queries(db_url)
 
-    # 3 records are Fall 2026
-    assert r['q1_fall_2026_count'] == 3
-    # 5 records total
+    assert r['q1_fall_2026_count'] == 3   # 3 of our 5 records are Fall 2026
     assert r['total_count'] == 5
-    # 2 international
     assert r['international_count'] == 2
-    # 3 american
     assert r['american_count'] == 3
 
 
-# ---------- load_data helper tests ----------
+# --- load_data helper tests ---
 
 @pytest.mark.db
 def test_safe_float():
-    """safe_float converts valid values and returns None for bad ones."""
+    """Quick check: valid floats, None, and non-numeric strings."""
     from src.load_data import safe_float
     assert safe_float(3.5) == 3.5
     assert safe_float('4.0') == 4.0
@@ -130,7 +125,7 @@ def test_safe_float():
 
 @pytest.mark.db
 def test_convert_international_status():
-    """convert_international_status maps booleans/strings correctly."""
+    """True/False/string inputs should map to the right labels."""
     from src.load_data import convert_international_status
     assert convert_international_status(True) == 'International'
     assert convert_international_status(False) == 'American'
@@ -142,7 +137,7 @@ def test_convert_international_status():
 
 @pytest.mark.db
 def test_prepare_row():
-    """prepare_row produces a tuple of the expected length."""
+    """The returned tuple should have 14 elements (one per column)."""
     from src.load_data import prepare_row
     row = prepare_row(SAMPLE_RECORDS[0])
     assert isinstance(row, tuple)
@@ -151,7 +146,7 @@ def test_prepare_row():
 
 @pytest.mark.db
 def test_prepare_row_no_us_field():
-    """prepare_row uses international flag when us_or_international missing."""
+    """When us_or_international is absent, fall back to the 'international' flag."""
     from src.load_data import prepare_row
     entry = {
         'program': 'CS', 'university': 'MIT',
@@ -163,7 +158,7 @@ def test_prepare_row_no_us_field():
 
 @pytest.mark.db
 def test_insert_records(db_url):
-    """insert_records inserts rows and returns count."""
+    """insert_records should insert all rows and return the count."""
     from src.load_data import insert_records
     count = insert_records(SAMPLE_RECORDS, db_url)
     assert count == len(SAMPLE_RECORDS)
@@ -171,7 +166,7 @@ def test_insert_records(db_url):
 
 @pytest.mark.db
 def test_create_table(db_url):
-    """create_table is idempotent (IF NOT EXISTS)."""
+    """Calling create_table twice shouldn't raise (IF NOT EXISTS)."""
     from src.load_data import create_table
     create_table(db_url)   # should not raise
     create_table(db_url)   # second call also fine
@@ -204,7 +199,7 @@ def test_get_database_url_default(monkeypatch):
 
 @pytest.mark.db
 def test_load_data_main(monkeypatch, capsys):
-    """load_data.main() prints 'No data' when JSON is missing."""
+    """When there's no JSON file, main() should print 'No data'."""
     from src.load_data import main
     monkeypatch.setattr(
         'src.load_data.load_json_data', lambda p: []
@@ -215,7 +210,7 @@ def test_load_data_main(monkeypatch, capsys):
 
 @pytest.mark.db
 def test_load_data_main_with_data(monkeypatch, db_url):
-    """load_data.main() inserts data when JSON exists."""
+    """When JSON data exists, main() should insert into the DB."""
     from src import load_data
 
     monkeypatch.setattr(
@@ -235,11 +230,11 @@ def test_load_data_main_with_data(monkeypatch, db_url):
     conn.close()
 
 
-# ---------- query_data module tests ----------
+# --- query_data module ---
 
 @pytest.mark.db
 def test_query_data_run_all(client, db_url):
-    """query_data.run_all_queries returns dict with expected keys."""
+    """run_all_queries should return q1..q9 + custom_1 + custom_2."""
     client.post('/pull_data')
     from src.query_data import run_all_queries
     r = run_all_queries(db_url)
@@ -250,7 +245,7 @@ def test_query_data_run_all(client, db_url):
 
 @pytest.mark.db
 def test_query_data_individual_functions(client, db_url):
-    """Each individual query function runs without error."""
+    """Smoke test: every single query function runs and returns something."""
     client.post('/pull_data')
     from src import query_data as qd
     assert isinstance(qd.query_fall_2026_count(db_url), int)
@@ -285,7 +280,7 @@ def test_query_data_get_connection(db_url):
 
 @pytest.mark.db
 def test_query_data_main(monkeypatch, db_url, capsys):
-    """query_data.main() prints results to stdout."""
+    """main() should print the analysis banner to stdout."""
     from src import query_data as qd
     from tests.conftest import _fake_loader, _fake_scraper
 

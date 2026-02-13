@@ -1,7 +1,10 @@
 """
-test_clean.py - Data Cleaning Module Tests
+test_clean.py - Tests for the data cleaning pipeline.
 
-Achieves coverage for src/clean.py.
+Covers every function in src/clean.py: GPA/GRE standardization,
+date parsing, HTML stripping, and the top-level clean_data function.
+
+Author: Aaron Xu
 """
 
 import json
@@ -20,13 +23,11 @@ from src.clean import (
 )
 
 
-# ---------------------------------------------------------------------------
-# clean_data
-# ---------------------------------------------------------------------------
+# --- clean_data (top-level function) ---
 
 @pytest.mark.web
 def test_clean_data_basic():
-    """clean_data processes a list of raw entries."""
+    """A minimal valid entry should come out cleaned."""
     raw = [
         {
             'program': 'CS',
@@ -54,7 +55,7 @@ def test_clean_data_basic():
 
 @pytest.mark.web
 def test_clean_data_skips_bad_entry():
-    """clean_data skips entries that raise exceptions."""
+    """Entries that raise (like None) should be skipped, not crash."""
     raw = [
         None,    # will cause AttributeError on .get()
         {'program': 'P', 'status': 'Rejected', 'gpa': None,
@@ -70,15 +71,13 @@ def test_clean_data_skips_bad_entry():
 
 @pytest.mark.web
 def test_clean_data_llm_flag(capsys):
-    """clean_data prints LLM reminder when use_llm=True."""
+    """When use_llm=True, a reminder message should be printed."""
     clean_data([], use_llm=True)
     out = capsys.readouterr().out
     assert 'LLM' in out
 
 
-# ---------------------------------------------------------------------------
-# parse_program_university
-# ---------------------------------------------------------------------------
+# --- parse_program_university ---
 
 @pytest.mark.web
 def test_parse_at_format():
@@ -110,9 +109,7 @@ def test_parse_none():
     assert parse_program_university(None) == (None, None)
 
 
-# ---------------------------------------------------------------------------
-# standardize_gre
-# ---------------------------------------------------------------------------
+# --- standardize_gre ---
 
 @pytest.mark.web
 def test_standardize_gre_valid():
@@ -145,9 +142,7 @@ def test_standardize_gre_zero():
     assert standardize_gre('0') == '0'
 
 
-# ---------------------------------------------------------------------------
-# standardize_gpa
-# ---------------------------------------------------------------------------
+# --- standardize_gpa ---
 
 @pytest.mark.web
 def test_standardize_gpa_valid():
@@ -167,9 +162,7 @@ def test_standardize_gpa_none():
     assert standardize_gpa(3.5) is None     # not a string
 
 
-# ---------------------------------------------------------------------------
-# clean_status
-# ---------------------------------------------------------------------------
+# --- clean_status ---
 
 @pytest.mark.web
 def test_clean_status_accepted():
@@ -196,9 +189,7 @@ def test_clean_status_none():
     assert clean_status(None) is None
 
 
-# ---------------------------------------------------------------------------
-# parse_date
-# ---------------------------------------------------------------------------
+# --- parse_date ---
 
 @pytest.mark.web
 def test_parse_date_us_format():
@@ -230,9 +221,7 @@ def test_parse_date_iso_bad_values():
     assert parse_date('2026-13-01') is None
 
 
-# ---------------------------------------------------------------------------
-# remove_html
-# ---------------------------------------------------------------------------
+# --- remove_html ---
 
 @pytest.mark.web
 def test_remove_html_tags():
@@ -253,9 +242,7 @@ def test_remove_html_none():
     assert remove_html('') is None
 
 
-# ---------------------------------------------------------------------------
-# save / load
-# ---------------------------------------------------------------------------
+# --- File I/O ---
 
 @pytest.mark.web
 def test_save_and_load_cleaned(tmp_path):

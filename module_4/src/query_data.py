@@ -1,11 +1,12 @@
 """
-query_data.py - SQL queries for Grad Cafe data analysis
+query_data.py - SQL queries for the Grad Cafe analysis.
 
-Each function runs a specific query and returns its result.
-All functions accept an optional *database_url* so tests
-can point them at a test database.
+Each function runs one query and returns its result.  They all accept
+an optional database_url so the test suite can point them at a
+separate test database.
 
-Author: Student
+Author: Aaron Xu
+Course: JHU Modern Software Concepts
 Date: February 2026
 """
 
@@ -14,11 +15,7 @@ import psycopg2
 
 
 def get_database_url():
-    """Return DATABASE_URL from environment or default.
-
-    Returns:
-        str: PostgreSQL connection string.
-    """
+    """Read DATABASE_URL from the environment, fall back to local default."""
     return os.environ.get(
         'DATABASE_URL',
         'postgresql://postgres:196301@localhost:5432/gradcafe'
@@ -26,21 +23,14 @@ def get_database_url():
 
 
 def get_connection(database_url=None):
-    """Open a new database connection.
-
-    Args:
-        database_url: Optional connection string override.
-
-    Returns:
-        psycopg2 connection object.
-    """
+    """Open a psycopg2 connection to the given (or default) database."""
     url = database_url or get_database_url()
     return psycopg2.connect(url)
 
 
-# ------------------------------------------------------------------
-# Individual query functions
-# ------------------------------------------------------------------
+# ---- Individual query functions ----
+# Each opens its own connection for simplicity.
+# TODO: refactor to share a connection if performance matters.
 
 def query_fall_2026_count(database_url=None):
     """Q1: How many entries applied for Fall 2026?"""
@@ -56,11 +46,7 @@ def query_fall_2026_count(database_url=None):
 
 
 def query_international_percentage(database_url=None):
-    """Q2: What percentage of entries are international students?
-
-    Returns:
-        dict with keys total, international, american, other, percentage.
-    """
+    """Q2: What percentage of entries are international?"""
     conn = get_connection(database_url)
     cur = conn.cursor()
 
@@ -102,11 +88,7 @@ def query_international_percentage(database_url=None):
 
 
 def query_average_scores(database_url=None):
-    """Q3: Average GPA, GRE, GRE V, GRE AW of applicants.
-
-    Returns:
-        dict with keys avg_gpa, avg_gre, avg_gre_v, avg_gre_aw.
-    """
+    """Q3: Average GPA, GRE, GRE V, GRE AW for applicants who report them."""
     conn = get_connection(database_url)
     cur = conn.cursor()
 
@@ -149,11 +131,7 @@ def query_american_fall_2026_gpa(database_url=None):
 
 
 def query_fall_2025_acceptance_rate(database_url=None):
-    """Q5: What percent of Fall 2025 entries are acceptances?
-
-    Returns:
-        dict with keys total, accepted, percentage.
-    """
+    """Q5: What percent of Fall 2025 entries are acceptances?"""
     conn = get_connection(database_url)
     cur = conn.cursor()
 
@@ -290,16 +268,8 @@ def query_acceptance_by_degree(database_url=None):
     return results
 
 
-# ------------------------------------------------------------------
-# Aggregate runner
-# ------------------------------------------------------------------
-
 def run_all_queries(database_url=None):
-    """Run every query and return a dict of results.
-
-    Returns:
-        dict with keys q1 .. q9, custom_1, custom_2.
-    """
+    """Convenience wrapper — runs all queries and returns a single dict."""
     return {
         'q1': query_fall_2026_count(database_url),
         'q2': query_international_percentage(database_url),
@@ -316,7 +286,7 @@ def run_all_queries(database_url=None):
 
 
 def main():
-    """Print all query results to stdout."""
+    """Print all query results to the terminal."""
     results = run_all_queries()
     print("=" * 60)
     print("GRAD CAFE DATA ANALYSIS")

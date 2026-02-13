@@ -1,11 +1,11 @@
 """
-Shared pytest fixtures for the Grad Cafe test suite.
+conftest.py - Shared test fixtures.
 
-Provides:
-- A test PostgreSQL database (created automatically)
-- Sample applicant records
-- Flask test app and client with fake scraper/loader
-- Database cleanup between tests
+Sets up a test Postgres database, provides sample records, and
+creates a Flask test client with fake scraper/loader so we never
+hit the real Grad Cafe site during tests.
+
+Author: Aaron Xu
 """
 
 import os
@@ -15,18 +15,13 @@ import psycopg2
 from src.app import create_app
 from src.load_data import CREATE_TABLE_SQL
 
-
-# ---------------------------------------------------------------------------
-# Database URL helpers
-# ---------------------------------------------------------------------------
-
-# Default connects to a local Postgres; CI overrides via env-var.
+# Local Postgres URL; overridden by env-var in CI.
 _BASE_URL = os.environ.get(
     'TEST_DATABASE_URL',
     'postgresql://postgres:196301@localhost:5432/gradcafe_test'
 )
 
-# We also need a connection to the *default* database to create the test db.
+# Need a connection to the default "postgres" DB in order to CREATE DATABASE.
 _ADMIN_URL = os.environ.get(
     'ADMIN_DATABASE_URL',
     'postgresql://postgres:196301@localhost:5432/postgres'
@@ -34,11 +29,7 @@ _ADMIN_URL = os.environ.get(
 
 TEST_DB_NAME = 'gradcafe_test'
 
-
-# ---------------------------------------------------------------------------
-# Sample data used across many tests
-# ---------------------------------------------------------------------------
-
+# Five fake applicants used by most tests.
 SAMPLE_RECORDS = [
     {
         'url': 'https://gradcafe.com/result/1001',
@@ -118,13 +109,9 @@ SAMPLE_RECORDS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Session-scoped: create the test database once
-# ---------------------------------------------------------------------------
-
 @pytest.fixture(scope='session', autouse=True)
 def _ensure_test_database():
-    """Create the test database if it does not exist."""
+    """Create gradcafe_test DB once per session (no-op if it exists)."""
     try:
         conn = psycopg2.connect(_ADMIN_URL)
         conn.autocommit = True
@@ -138,17 +125,13 @@ def _ensure_test_database():
         cur.close()
         conn.close()
     except Exception:
-        # If we cannot create, assume it already exists (CI).
+        # On CI the database is already there.
         pass
 
 
-# ---------------------------------------------------------------------------
-# Function-scoped: fresh table for every test that uses `db_url`
-# ---------------------------------------------------------------------------
-
 @pytest.fixture()
 def db_url(_ensure_test_database):
-    """Provide the test database URL and create a fresh table."""
+    """Drop + recreate the applicants table so each test starts clean."""
     conn = psycopg2.connect(_BASE_URL)
     cur = conn.cursor()
     cur.execute("DROP TABLE IF EXISTS applicants")
@@ -159,17 +142,13 @@ def db_url(_ensure_test_database):
     return _BASE_URL
 
 
-# ---------------------------------------------------------------------------
-# Fake scraper / loader for Flask tests
-# ---------------------------------------------------------------------------
-
 def _fake_scraper():
-    """Return canned sample records (no network)."""
+    """Return the canned SAMPLE_RECORDS (no network needed)."""
     return list(SAMPLE_RECORDS)
 
 
 def _fake_loader(records, database_url):
-    """Insert records directly using plain SQL (test helper)."""
+    """Insert records with plain SQL — keeps tests independent of load_data."""
     conn = psycopg2.connect(database_url)
     cur = conn.cursor()
     for r in records:
@@ -198,13 +177,9 @@ def _fake_loader(records, database_url):
     conn.close()
 
 
-# ---------------------------------------------------------------------------
-# Flask app & client fixtures
-# ---------------------------------------------------------------------------
-
 @pytest.fixture()
 def app(db_url):
-    """Create a test Flask app wired to the test database."""
+    """Flask app pointed at the test DB, with fake scraper/loader."""
     application = create_app({
         'DATABASE_URL': db_url,
         'TESTING': True,

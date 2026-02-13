@@ -1,10 +1,10 @@
 """
-test_flask_page.py - Flask App & Page Rendering Tests
+test_flask_page.py - Tests for the Flask app factory and the main page.
 
-Verifies:
-  - App factory creates a testable Flask app with required routes
-  - GET / returns 200 with required page components
-  - Page contains both buttons, "Analysis" text, "Answer:" labels
+Makes sure create_app works, all routes are registered, and
+that GET / renders the expected HTML (buttons, labels, etc.).
+
+Author: Aaron Xu
 """
 
 import pytest
@@ -12,11 +12,11 @@ from bs4 import BeautifulSoup
 from src.app import create_app, get_database_url, get_db_connection, main
 
 
-# ---------- app factory / config ----------
+# --- App factory and configuration ---
 
 @pytest.mark.web
 def test_create_app_returns_flask_instance(db_url):
-    """create_app() returns a Flask app object."""
+    """Sanity check: create_app gives us an actual Flask object."""
     app = create_app({'DATABASE_URL': db_url, 'TESTING': True})
     assert app is not None
     assert hasattr(app, 'test_client')
@@ -24,7 +24,7 @@ def test_create_app_returns_flask_instance(db_url):
 
 @pytest.mark.web
 def test_app_has_required_routes(app):
-    """The app registers /, /pull_data, /update_analysis, /status."""
+    """All four routes should be registered."""
     rules = [r.rule for r in app.url_map.iter_rules()]
     assert '/' in rules
     assert '/pull_data' in rules
@@ -34,7 +34,7 @@ def test_app_has_required_routes(app):
 
 @pytest.mark.web
 def test_custom_config_applied(db_url):
-    """Config dict passed to create_app is honoured."""
+    """Extra config keys we pass in should show up on app.config."""
     app = create_app({
         'DATABASE_URL': db_url,
         'TESTING': True,
@@ -43,32 +43,32 @@ def test_custom_config_applied(db_url):
     assert app.config['MY_KEY'] == 42
 
 
-# ---------- GET / (page load) ----------
+# --- Page rendering (GET /) ---
 
 @pytest.mark.web
 def test_index_returns_200(client):
-    """GET / responds with 200."""
+    """Basic smoke test for the main page."""
     resp = client.get('/')
     assert resp.status_code == 200
 
 
 @pytest.mark.web
 def test_page_contains_analysis_text(client):
-    """Page text includes 'Analysis'."""
+    """The word 'Analysis' should appear somewhere on the page."""
     html = client.get('/').data.decode()
     assert 'Analysis' in html
 
 
 @pytest.mark.web
 def test_page_contains_answer_label(seeded_client):
-    """Page includes at least one 'Answer:' label."""
+    """After seeding data, the rendered page should have 'Answer:' labels."""
     html = seeded_client.get('/').data.decode()
     assert 'Answer:' in html
 
 
 @pytest.mark.web
 def test_page_has_pull_data_button(client):
-    """Page contains a Pull Data button with data-testid."""
+    """Pull Data button must have data-testid='pull-data-btn'."""
     soup = BeautifulSoup(client.get('/').data, 'html.parser')
     btn = soup.find(attrs={'data-testid': 'pull-data-btn'})
     assert btn is not None
@@ -77,18 +77,18 @@ def test_page_has_pull_data_button(client):
 
 @pytest.mark.web
 def test_page_has_update_analysis_button(client):
-    """Page contains an Update Analysis button with data-testid."""
+    """Update Analysis button must have data-testid='update-analysis-btn'."""
     soup = BeautifulSoup(client.get('/').data, 'html.parser')
     btn = soup.find(attrs={'data-testid': 'update-analysis-btn'})
     assert btn is not None
     assert 'Update Analysis' in btn.get_text()
 
 
-# ---------- helper functions ----------
+# --- Helper function tests ---
 
 @pytest.mark.web
 def test_get_database_url_default(monkeypatch):
-    """get_database_url returns a default when DATABASE_URL is unset."""
+    """With no env var, we should still get a valid Postgres URL."""
     monkeypatch.delenv('DATABASE_URL', raising=False)
     url = get_database_url()
     assert 'postgresql' in url
@@ -96,7 +96,7 @@ def test_get_database_url_default(monkeypatch):
 
 @pytest.mark.web
 def test_get_database_url_from_env(monkeypatch):
-    """get_database_url reads DATABASE_URL from environment."""
+    """When DATABASE_URL is set, that value should be used."""
     monkeypatch.setenv('DATABASE_URL', 'postgresql://test:test@host/db')
     url = get_database_url()
     assert url == 'postgresql://test:test@host/db'
@@ -104,7 +104,7 @@ def test_get_database_url_from_env(monkeypatch):
 
 @pytest.mark.web
 def test_get_db_connection(db_url):
-    """get_db_connection opens a live connection."""
+    """Make sure we can actually open a connection to the test DB."""
     conn = get_db_connection(db_url)
     assert conn is not None
     conn.close()
@@ -112,7 +112,7 @@ def test_get_db_connection(db_url):
 
 @pytest.mark.web
 def test_index_handles_db_error(db_url):
-    """If analysis queries fail, GET / still returns 200 with empty results."""
+    """If the DB is unreachable, index should still render (empty results)."""
     app = create_app({
         'DATABASE_URL': 'postgresql://bad:bad@localhost:9999/nope',
         'TESTING': True,
@@ -121,11 +121,11 @@ def test_index_handles_db_error(db_url):
     assert resp.status_code == 200
 
 
-# ---------- main() ----------
+# --- main() entry point ---
 
 @pytest.mark.web
 def test_main_calls_run(monkeypatch):
-    """main() creates an app and calls app.run()."""
+    """main() should create the app and call .run(port=5000)."""
     called = {}
 
     class FakeApp:
@@ -138,11 +138,11 @@ def test_main_calls_run(monkeypatch):
     assert called['run']['port'] == 5000
 
 
-# ---------- default scraper/loader references ----------
+# --- Default scraper / loader wrappers ---
 
 @pytest.mark.web
 def test_default_scraper_executes(monkeypatch):
-    """_default_scraper calls scrape.scrape_data and returns its result."""
+    """_default_scraper should delegate to scrape.scrape_data."""
     from src.app import _default_scraper
     monkeypatch.setattr(
         'src.scrape.scrape_data',
@@ -154,7 +154,7 @@ def test_default_scraper_executes(monkeypatch):
 
 @pytest.mark.web
 def test_default_loader_executes(monkeypatch):
-    """_default_loader calls load_data.insert_records."""
+    """_default_loader should delegate to load_data.insert_records."""
     from src.app import _default_loader
     called = {}
     monkeypatch.setattr(
@@ -165,11 +165,11 @@ def test_default_loader_executes(monkeypatch):
     assert called['n'] == 2
 
 
-# ---------- threading branch (non-TESTING) ----------
+# --- Threading branch (production mode) ---
 
 @pytest.mark.web
 def test_pull_data_uses_thread_when_not_testing(db_url):
-    """When TESTING is False, pull_data spawns a background thread."""
+    """In production mode (TESTING=False), pull runs in a background thread."""
     import time
     from tests.conftest import _fake_scraper, _fake_loader
 

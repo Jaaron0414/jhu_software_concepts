@@ -1,10 +1,12 @@
 """
-load_data.py - Load applicant data into PostgreSQL
+load_data.py - Load applicant data into PostgreSQL.
 
-Provides functions to create the applicants table,
-prepare rows from JSON records, and bulk-insert them.
+Creates the applicants table, converts JSON records into rows,
+and bulk-inserts them.  The url column has a UNIQUE constraint so
+that re-pulling the same data won't create duplicates.
 
-Author: Student
+Author: Aaron Xu
+Course: JHU Modern Software Concepts
 Date: February 2026
 """
 
@@ -15,8 +17,6 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 
-# SQL to create the applicants table with a UNIQUE constraint on url
-# so duplicate pulls do not create duplicate rows.
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS applicants (
     p_id SERIAL PRIMARY KEY,
@@ -39,11 +39,7 @@ CREATE TABLE IF NOT EXISTS applicants (
 
 
 def get_database_url():
-    """Return DATABASE_URL from environment or default.
-
-    Returns:
-        str: PostgreSQL connection string.
-    """
+    """Read DATABASE_URL from the environment, fall back to local default."""
     return os.environ.get(
         'DATABASE_URL',
         'postgresql://postgres:196301@localhost:5432/gradcafe'
@@ -51,11 +47,7 @@ def get_database_url():
 
 
 def create_table(database_url=None):
-    """Create the applicants table if it does not exist.
-
-    Args:
-        database_url: Optional connection string override.
-    """
+    """Run CREATE TABLE IF NOT EXISTS for the applicants table."""
     url = database_url or get_database_url()
     conn = psycopg2.connect(url)
     cur = conn.cursor()
@@ -66,14 +58,7 @@ def create_table(database_url=None):
 
 
 def safe_float(value):
-    """Safely convert *value* to float, returning None on failure.
-
-    Args:
-        value: Any value to convert.
-
-    Returns:
-        float or None.
-    """
+    """Try to convert value to float; return None if it fails."""
     if value is None:
         return None
     try:
@@ -83,14 +68,7 @@ def safe_float(value):
 
 
 def convert_international_status(value):
-    """Convert a boolean or string to a text nationality label.
-
-    Args:
-        value: True/False, 'International'/'American', or None.
-
-    Returns:
-        One of 'International', 'American', or 'Other'.
-    """
+    """Map True/False/'International'/'American' to a consistent label."""
     if value is None:
         return 'Other'
     if value is True or str(value) == 'International':
@@ -101,14 +79,7 @@ def convert_international_status(value):
 
 
 def prepare_row(entry):
-    """Convert one applicant dict into a tuple matching the INSERT columns.
-
-    Args:
-        entry: dict with raw applicant data.
-
-    Returns:
-        tuple of values for one database row.
-    """
+    """Convert one applicant dict into a tuple for the INSERT statement."""
     university = entry.get('university', '') or ''
     program = entry.get('program', '') or ''
     combined = f"{program}, {university}".strip(', ')
@@ -143,17 +114,7 @@ def prepare_row(entry):
 
 
 def insert_records(records, database_url=None):
-    """Insert applicant records into PostgreSQL, skipping duplicates.
-
-    Uses ON CONFLICT (url) DO NOTHING to enforce idempotency.
-
-    Args:
-        records: List of applicant dicts.
-        database_url: Optional connection string override.
-
-    Returns:
-        int: Number of rows passed to execute_values.
-    """
+    """Bulk-insert records, skipping any whose url already exists."""
     url = database_url or get_database_url()
     conn = psycopg2.connect(url)
     cur = conn.cursor()
@@ -177,14 +138,7 @@ def insert_records(records, database_url=None):
 
 
 def load_json_data(filepath):
-    """Load and return JSON data from *filepath*.
-
-    Args:
-        filepath: Path to a JSON file.
-
-    Returns:
-        list: Parsed JSON data, or empty list if file missing.
-    """
+    """Load JSON from filepath; returns [] if the file doesn't exist."""
     if not os.path.exists(filepath):
         return []
     with open(filepath, 'r', encoding='utf-8') as fh:
@@ -192,7 +146,7 @@ def load_json_data(filepath):
 
 
 def main():
-    """Load data from the Module 2 JSON file into PostgreSQL."""
+    """CLI entry point — load the Module 2 JSON into Postgres."""
     json_path = os.path.join(
         os.path.dirname(__file__), '..', '..',
         'module_2', 'llm_extend_applicant_data.json'
