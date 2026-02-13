@@ -1,0 +1,18 @@
+LIMITATIONS OF ANALYZING ANONYMOUSLY SUBMITTED DATA
+====================================================
+
+Module 3 Assignment - JHU Modern Software Concepts
+
+
+PARAGRAPH 1: DATA COMPLETENESS AND MISSING VALUES
+
+One of the most significant challenges I encountered during this assignment was the prevalence of NULL (missing) values throughout the dataset. Out of 32,000 scraped entries, a substantial portion had incomplete information across multiple fields. For example, approximately 53% of entries (16,949 out of 32,000) had no comments, and the GRE score fields were particularly sparse. When initially scraping the Grad Cafe website, I discovered that GRE Quantitative and GRE Verbal scores were almost entirely missing from the main listing pages—the website only displays basic information on the results list while detailed metrics are stored on individual entry pages. To obtain GRE data, I had to modify my scraper to visit each individual result page, a process that took over 40 minutes for just 4,000 entries due to rate limiting. Even after this extensive effort, only about 2.5% of entries contained GRE Quantitative scores (105 out of 4,000) and about 6% contained GRE Verbal scores (245 out of 4,000). This sparse data makes statistical analysis challenging—calculating averages from such small samples may not be representative of the broader applicant population. The high rate of NULL values reflects both the optional nature of self-reported fields and the post-COVID trend of graduate programs making GRE scores optional or eliminating the requirement entirely.
+
+
+PARAGRAPH 2: SELECTION BIAS AND INTERPRETATION CHALLENGES
+
+Beyond data completeness, analyzing anonymously submitted data from Grad Cafe presents significant methodological challenges due to selection bias. Users who submit their application results are not a random sample—they tend to be individuals more engaged with the application process, often those with stronger profiles or notable outcomes. Our analysis shows this clearly: the average GRE Quantitative score in our data was 166, compared to the national average of approximately 157 reported by ETS—a 9-point difference. Similarly, the average GRE Verbal score was 160, well above the national average of 151. This suggests that high-achieving applicants are far more likely to report their scores, while those with lower scores may feel less inclined to share publicly. The average GPA of 3.76 in our dataset also appears elevated compared to typical applicant pools. Furthermore, the data cannot account for applicants who never submitted results, withdrew applications, or chose not to share negative outcomes. These biases mean that prospective applicants using Grad Cafe data to gauge their competitiveness may develop unrealistic expectations. The data should be interpreted as descriptive of a self-selected, high-achieving subset rather than representative of all graduate school applicants.
+
+
+====================================================
+Note: Convert this file to PDF format for final submission.

@@ -1,0 +1,8 @@
+flask
+psycopg2-binary
+beautifulsoup4
+lxml
+pytest
+pytest-cov
+sphinx
+sphinx-rtd-theme

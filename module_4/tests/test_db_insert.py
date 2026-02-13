@@ -1,0 +1,307 @@
+"""
+test_db_insert.py - Database Write Tests
+
+Verifies:
+  - After POST /pull_data, rows with required fields exist in the DB
+  - Duplicate pulls do not create duplicate rows (idempotency)
+  - Query functions return dicts with expected keys
+  - load_data helper functions work correctly
+"""
+
+import pytest
+import psycopg2
+
+from tests.conftest import SAMPLE_RECORDS
+
+
+# ---------- insert on pull ----------
+
+@pytest.mark.db
+def test_insert_rows_exist_after_pull(client, db_url):
+    """After POST /pull_data, new rows appear in the applicants table."""
+    resp = client.post('/pull_data')
+    assert resp.status_code == 200
+
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM applicants")
+    count = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    assert count == len(SAMPLE_RECORDS)
+
+
+@pytest.mark.db
+def test_required_fields_not_null(client, db_url):
+    """Inserted rows have non-null url and status fields."""
+    client.post('/pull_data')
+
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT url, status, term, degree FROM applicants"
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    for url, status, term, degree in rows:
+        assert url is not None
+        assert status is not None
+        assert term is not None
+        assert degree is not None
+
+
+# ---------- idempotency / constraints ----------
+
+@pytest.mark.db
+def test_duplicate_pull_no_duplicates(client, db_url):
+    """Pulling twice with the same data does not duplicate rows."""
+    client.post('/pull_data')
+    client.post('/pull_data')
+
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM applicants")
+    count = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+
+    assert count == len(SAMPLE_RECORDS)
+
+
+# ---------- query function returns expected keys ----------
+
+@pytest.mark.db
+def test_run_analysis_queries_keys(client, db_url):
+    """run_analysis_queries returns a dict with expected keys."""
+    client.post('/pull_data')
+
+    from src.app import run_analysis_queries
+    results = run_analysis_queries(db_url)
+
+    expected_keys = [
+        'q1_fall_2026_count', 'total_count',
+        'international_count', 'american_count',
+        'international_percentage',
+        'avg_gpa', 'avg_gre', 'avg_gre_v', 'avg_gre_aw',
+        'american_fall_2026_gpa',
+        'fall_2025_total', 'fall_2025_accepted',
+        'fall_2025_acceptance_rate',
+        'fall_2026_acceptance_gpa',
+        'jhu_masters_cs',
+        'phd_cs_top_schools',
+        'phd_cs_top_schools_llm',
+        'top_programs',
+        'acceptance_by_degree',
+    ]
+    for key in expected_keys:
+        assert key in results, f"Missing key: {key}"
+
+
+@pytest.mark.db
+def test_analysis_values_correct(client, db_url):
+    """Spot-check a few analysis values with known test data."""
+    client.post('/pull_data')
+    from src.app import run_analysis_queries
+    r = run_analysis_queries(db_url)
+
+    # 3 records are Fall 2026
+    assert r['q1_fall_2026_count'] == 3
+    # 5 records total
+    assert r['total_count'] == 5
+    # 2 international
+    assert r['international_count'] == 2
+    # 3 american
+    assert r['american_count'] == 3
+
+
+# ---------- load_data helper tests ----------
+
+@pytest.mark.db
+def test_safe_float():
+    """safe_float converts valid values and returns None for bad ones."""
+    from src.load_data import safe_float
+    assert safe_float(3.5) == 3.5
+    assert safe_float('4.0') == 4.0
+    assert safe_float(None) is None
+    assert safe_float('abc') is None
+
+
+@pytest.mark.db
+def test_convert_international_status():
+    """convert_international_status maps booleans/strings correctly."""
+    from src.load_data import convert_international_status
+    assert convert_international_status(True) == 'International'
+    assert convert_international_status(False) == 'American'
+    assert convert_international_status(None) == 'Other'
+    assert convert_international_status('International') == 'International'
+    assert convert_international_status('American') == 'American'
+    assert convert_international_status('Unknown') == 'Unknown'
+
+
+@pytest.mark.db
+def test_prepare_row():
+    """prepare_row produces a tuple of the expected length."""
+    from src.load_data import prepare_row
+    row = prepare_row(SAMPLE_RECORDS[0])
+    assert isinstance(row, tuple)
+    assert len(row) == 14
+
+
+@pytest.mark.db
+def test_prepare_row_no_us_field():
+    """prepare_row uses international flag when us_or_international missing."""
+    from src.load_data import prepare_row
+    entry = {
+        'program': 'CS', 'university': 'MIT',
+        'international': True, 'url': 'http://test',
+    }
+    row = prepare_row(entry)
+    assert row[6] == 'International'  # us_or_international column
+
+
+@pytest.mark.db
+def test_insert_records(db_url):
+    """insert_records inserts rows and returns count."""
+    from src.load_data import insert_records
+    count = insert_records(SAMPLE_RECORDS, db_url)
+    assert count == len(SAMPLE_RECORDS)
+
+
+@pytest.mark.db
+def test_create_table(db_url):
+    """create_table is idempotent (IF NOT EXISTS)."""
+    from src.load_data import create_table
+    create_table(db_url)   # should not raise
+    create_table(db_url)   # second call also fine
+
+
+@pytest.mark.db
+def test_load_json_data_missing_file():
+    """load_json_data returns [] for non-existent file."""
+    from src.load_data import load_json_data
+    assert load_json_data('/no/such/file.json') == []
+
+
+@pytest.mark.db
+def test_load_json_data_valid(tmp_path):
+    """load_json_data reads a valid JSON file."""
+    import json
+    from src.load_data import load_json_data
+    fp = tmp_path / 'data.json'
+    fp.write_text(json.dumps([1, 2, 3]))
+    assert load_json_data(str(fp)) == [1, 2, 3]
+
+
+@pytest.mark.db
+def test_get_database_url_default(monkeypatch):
+    """load_data.get_database_url returns default when env unset."""
+    from src.load_data import get_database_url
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    assert 'postgresql' in get_database_url()
+
+
+@pytest.mark.db
+def test_load_data_main(monkeypatch, capsys):
+    """load_data.main() prints 'No data' when JSON is missing."""
+    from src.load_data import main
+    monkeypatch.setattr(
+        'src.load_data.load_json_data', lambda p: []
+    )
+    main()
+    assert 'No data' in capsys.readouterr().out
+
+
+@pytest.mark.db
+def test_load_data_main_with_data(monkeypatch, db_url):
+    """load_data.main() inserts data when JSON exists."""
+    from src import load_data
+
+    monkeypatch.setattr(
+        load_data, 'load_json_data',
+        lambda p: list(SAMPLE_RECORDS)
+    )
+    monkeypatch.setattr(
+        load_data, 'get_database_url', lambda: db_url
+    )
+    load_data.main()
+
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM applicants")
+    assert cur.fetchone()[0] > 0
+    cur.close()
+    conn.close()
+
+
+# ---------- query_data module tests ----------
+
+@pytest.mark.db
+def test_query_data_run_all(client, db_url):
+    """query_data.run_all_queries returns dict with expected keys."""
+    client.post('/pull_data')
+    from src.query_data import run_all_queries
+    r = run_all_queries(db_url)
+    for key in ('q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9',
+                'custom_1', 'custom_2'):
+        assert key in r
+
+
+@pytest.mark.db
+def test_query_data_individual_functions(client, db_url):
+    """Each individual query function runs without error."""
+    client.post('/pull_data')
+    from src import query_data as qd
+    assert isinstance(qd.query_fall_2026_count(db_url), int)
+    assert 'percentage' in qd.query_international_percentage(db_url)
+    assert 'avg_gpa' in qd.query_average_scores(db_url)
+    qd.query_american_fall_2026_gpa(db_url)
+    assert 'percentage' in qd.query_fall_2025_acceptance_rate(db_url)
+    qd.query_fall_2026_acceptance_gpa(db_url)
+    assert isinstance(qd.query_jhu_masters_cs(db_url), int)
+    assert isinstance(qd.query_top_schools_phd_cs(db_url), int)
+    assert isinstance(qd.query_top_schools_phd_cs_llm(db_url), int)
+    assert isinstance(qd.query_top_programs(db_url), list)
+    assert isinstance(qd.query_acceptance_by_degree(db_url), list)
+
+
+@pytest.mark.db
+def test_query_data_get_database_url(monkeypatch):
+    """query_data.get_database_url reads from environment."""
+    from src.query_data import get_database_url
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    assert 'postgresql' in get_database_url()
+
+
+@pytest.mark.db
+def test_query_data_get_connection(db_url):
+    """query_data.get_connection returns a valid connection."""
+    from src.query_data import get_connection
+    conn = get_connection(db_url)
+    assert conn is not None
+    conn.close()
+
+
+@pytest.mark.db
+def test_query_data_main(monkeypatch, db_url, capsys):
+    """query_data.main() prints results to stdout."""
+    from src import query_data as qd
+    from tests.conftest import _fake_loader, _fake_scraper
+
+    # Seed data first
+    from src.load_data import create_table
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+    cur.execute("DROP TABLE IF EXISTS applicants")
+    from src.load_data import CREATE_TABLE_SQL
+    cur.execute(CREATE_TABLE_SQL)
+    conn.commit()
+    cur.close()
+    conn.close()
+    _fake_loader(_fake_scraper(), db_url)
+
+    monkeypatch.setattr(qd, 'get_database_url', lambda: db_url)
+    qd.main()
+    out = capsys.readouterr().out
+    assert 'GRAD CAFE DATA ANALYSIS' in out

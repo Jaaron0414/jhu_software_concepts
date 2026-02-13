@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grad Cafe Data Analysis</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        header {
+            display: flex; justify-content: space-between;
+            align-items: center; padding-bottom: 15px;
+            border-bottom: 2px solid #333; margin-bottom: 30px;
+        }
+        h1 { color: #4fc3f7; margin: 0; }
+        .btn-group { display: flex; gap: 10px; }
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 5px;
+            cursor: pointer; font-size: 14px; color: #fff;
+        }
+        .btn-primary { background: #4caf50; }
+        .btn-secondary { background: #555; }
+        .btn:hover { opacity: .9; }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+        .status {
+            background: #2d2d44; padding: 15px; border-radius: 5px;
+            margin-bottom: 20px; display: none;
+        }
+        .status.show { display: block; }
+        .question {
+            background: #16213e; padding: 20px; border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .question .q-label { color: #888; font-size: 13px; }
+        .question .answer {
+            font-size: 18px; font-weight: bold; color: #81c784;
+            margin-top: 6px;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #333; }
+        th { color: #888; font-size: 12px; text-transform: uppercase; }
+        footer {
+            margin-top: 40px; padding-top: 20px;
+            border-top: 1px solid #333; text-align: center;
+            color: #666; font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <h1>Grad Cafe Data Analysis</h1>
+            <p style="color:#888;font-size:14px;">
+                Module 4 | Total Entries: {{ results.total_count | default(0) }}
+            </p>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" id="pullBtn"
+                    data-testid="pull-data-btn" onclick="pullData()">
+                Pull Data
+            </button>
+            <button class="btn btn-secondary" id="updateBtn"
+                    data-testid="update-analysis-btn" onclick="updateAnalysis()">
+                Update Analysis
+            </button>
+        </div>
+    </header>
+
+    <div class="status" id="status">
+        <span id="statusMsg">Loading...</span>
+    </div>
+
+    <!-- Q1 -->
+    <div class="question">
+        <div class="q-label">Question 1 — Fall 2026 applicant count</div>
+        <div class="answer">Answer: {{ results.q1_fall_2026_count | default(0) }}</div>
+    </div>
+
+    <!-- Q2 -->
+    <div class="question">
+        <div class="q-label">Question 2 — International student percentage</div>
+        <div class="answer">Answer: {{ "%.2f"|format(results.international_percentage | default(0) | float) }}%</div>
+    </div>
+
+    <!-- Q3 -->
+    <div class="question">
+        <div class="q-label">Question 3 — Average GPA, GRE, GRE V, GRE AW</div>
+        <div class="answer">
+            Answer: GPA {{ "%.2f"|format(results.avg_gpa | default(0) | float) }}
+            | GRE {{ "%.2f"|format(results.avg_gre | default(0) | float) }}
+            | GRE V {{ "%.2f"|format(results.avg_gre_v | default(0) | float) }}
+            | GRE AW {{ "%.2f"|format(results.avg_gre_aw | default(0) | float) }}
+        </div>
+    </div>
+
+    <!-- Q4 -->
+    <div class="question">
+        <div class="q-label">Question 4 — Average GPA of American students, Fall 2026</div>
+        <div class="answer">Answer: {{ "%.2f"|format(results.american_fall_2026_gpa | default(0) | float) }}</div>
+    </div>
+
+    <!-- Q5 -->
+    <div class="question">
+        <div class="q-label">Question 5 — Fall 2025 acceptance rate</div>
+        <div class="answer">Answer: {{ "%.2f"|format(results.fall_2025_acceptance_rate | default(0) | float) }}%</div>
+    </div>
+
+    <!-- Q6 -->
+    <div class="question">
+        <div class="q-label">Question 6 — Average GPA of Fall 2026 acceptances</div>
+        <div class="answer">Answer: {{ "%.2f"|format(results.fall_2026_acceptance_gpa | default(0) | float) }}</div>
+    </div>
+
+    <!-- Q7 -->
+    <div class="question">
+        <div class="q-label">Question 7 — JHU Masters Computer Science count</div>
+        <div class="answer">Answer: {{ results.jhu_masters_cs | default(0) }}</div>
+    </div>
+
+    <!-- Q8 -->
+    <div class="question">
+        <div class="q-label">Question 8 — 2026 PhD CS acceptances (Georgetown/MIT/Stanford/CMU)</div>
+        <div class="answer">Answer: {{ results.phd_cs_top_schools | default(0) }}</div>
+    </div>
+
+    <!-- Q9 -->
+    <div class="question">
+        <div class="q-label">Question 9 — Q8 using LLM-generated fields</div>
+        <div class="answer">Answer: {{ results.phd_cs_top_schools_llm | default(0) }}</div>
+    </div>
+
+    <!-- Custom Q1 -->
+    <div class="question">
+        <div class="q-label">Custom Question 1 — Top 10 most popular programs</div>
+        <div class="answer">Answer:</div>
+        {% if results.top_programs %}
+        <table>
+            <thead><tr><th>#</th><th>Program</th><th>Count</th></tr></thead>
+            <tbody>
+            {% for prog, cnt in results.top_programs %}
+            <tr><td>{{ loop.index }}</td><td>{{ prog }}</td><td>{{ cnt }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+
+    <!-- Custom Q2 -->
+    <div class="question">
+        <div class="q-label">Custom Question 2 — Acceptance rate by degree type</div>
+        <div class="answer">Answer:</div>
+        {% if results.acceptance_by_degree %}
+        <table>
+            <thead><tr><th>Degree</th><th>Total</th><th>Accepted</th><th>Rate</th></tr></thead>
+            <tbody>
+            {% for deg, total, accepted, rate in results.acceptance_by_degree %}
+            <tr>
+                <td>{{ deg }}</td><td>{{ total }}</td><td>{{ accepted }}</td>
+                <td>{{ "%.2f"|format(rate | float) }}%</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+
+    <footer>
+        <p>Module 4 — JHU Modern Software Concepts | Flask + PostgreSQL</p>
+    </footer>
+</div>
+
+<script>
+function showStatus(msg) {
+    document.getElementById('status').classList.add('show');
+    document.getElementById('statusMsg').textContent = msg;
+}
+async function pullData() {
+    document.getElementById('pullBtn').disabled = true;
+    showStatus('Starting data pull...');
+    try {
+        const r = await fetch('/pull_data', {method:'POST'});
+        const d = await r.json();
+        showStatus(d.ok ? 'Pull started.' : 'Busy: ' + JSON.stringify(d));
+    } catch(e) { showStatus('Error: '+e.message); }
+    finally { document.getElementById('pullBtn').disabled = false; }
+}
+async function updateAnalysis() {
+    document.getElementById('updateBtn').disabled = true;
+    showStatus('Refreshing analysis...');
+    try {
+        const r = await fetch('/update_analysis', {method:'POST'});
+        const d = await r.json();
+        if (d.ok) { location.reload(); }
+        else { showStatus('Busy: ' + JSON.stringify(d)); }
+    } catch(e) { showStatus('Error: '+e.message); }
+    finally { document.getElementById('updateBtn').disabled = false; }
+}
+</script>
+</body>
+</html>
