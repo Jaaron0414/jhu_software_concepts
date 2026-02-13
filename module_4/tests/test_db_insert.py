@@ -4,7 +4,7 @@ test_db_insert.py - Database write and query tests.
 Covers the load_data module (inserting records, idempotency) and
 the query_data module (all nine queries plus two custom ones).
 
-Author: Aaron Xu
+Author: Jie Xu
 """
 
 import pytest

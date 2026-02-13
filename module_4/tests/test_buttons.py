@@ -4,7 +4,7 @@ test_buttons.py - Tests for the Pull Data and Update Analysis buttons.
 Checks that the two POST endpoints return the right status codes
 and JSON payloads, and that the busy-state gating (409) works.
 
-Author: Aaron Xu
+Author: Jie Xu
 """
 
 import pytest

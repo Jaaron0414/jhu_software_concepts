@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.abspath('..'))
 
 project = 'Grad Cafe Analytics'
-author = 'Aaron Xu'
+author = 'Jie Xu'
 release = '1.0'
 
 extensions = [

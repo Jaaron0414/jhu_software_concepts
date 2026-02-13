@@ -5,7 +5,7 @@ Creates the applicants table, converts JSON records into rows,
 and bulk-inserts them.  The url column has a UNIQUE constraint so
 that re-pulling the same data won't create duplicates.
 
-Author: Aaron Xu
+Author: Jie Xu
 Course: JHU Modern Software Concepts
 Date: February 2026
 """

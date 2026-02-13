@@ -5,7 +5,7 @@ Sets up a test Postgres database, provides sample records, and
 creates a Flask test client with fake scraper/loader so we never
 hit the real Grad Cafe site during tests.
 
-Author: Aaron Xu
+Author: Jie Xu
 """
 
 import os

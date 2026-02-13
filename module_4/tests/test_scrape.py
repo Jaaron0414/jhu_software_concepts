@@ -4,7 +4,7 @@ test_scrape.py - Tests for the web scraper.
 All network calls are mocked (we never actually hit Grad Cafe).
 Uses fake HTML that mirrors the real page structure.
 
-Author: Aaron Xu
+Author: Jie Xu
 """
 
 import json
@@ -263,7 +263,7 @@ def test_scrape_data_success(monkeypatch):
         def __exit__(self, *a):
             pass
 
-    call_count = {'n': 0}
+    call_count = {'n': 0}                                 
     def fake_urlopen(req, timeout=15):
         call_count['n'] += 1
         if call_count['n'] > 1:

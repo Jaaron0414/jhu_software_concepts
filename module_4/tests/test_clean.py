@@ -4,7 +4,7 @@ test_clean.py - Tests for the data cleaning pipeline.
 Covers every function in src/clean.py: GPA/GRE standardization,
 date parsing, HTML stripping, and the top-level clean_data function.
 
-Author: Aaron Xu
+Author: Jie Xu
 """
 
 import json

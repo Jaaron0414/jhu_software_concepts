@@ -1,0 +1,171 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Architecture &mdash; Grad Cafe Analytics 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api.html" />
+    <link rel="prev" title="Overview &amp; Setup" href="setup.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Grad Cafe Analytics
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="setup.html">Overview &amp; Setup</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#web-layer-flask">Web Layer (Flask)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#etl-layer-scrape-clean">ETL Layer (Scrape + Clean)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#database-layer-postgresql">Database Layer (PostgreSQL)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#busy-state-policy">Busy-State Policy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#idempotency-strategy">Idempotency Strategy</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">Testing Guide</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Grad Cafe Analytics</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Architecture</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/architecture.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="architecture">
+<h1>Architecture<a class="headerlink" href="#architecture" title="Link to this heading"></a></h1>
+<p>The system has three layers:</p>
+<section id="web-layer-flask">
+<h2>Web Layer (Flask)<a class="headerlink" href="#web-layer-flask" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">src/app.py</span></code> exposes a single-page Flask application with four routes:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/</span></code> — renders the analysis dashboard (<code class="docutils literal notranslate"><span class="pre">templates/index.html</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/pull_data</span></code> — triggers a background scrape + load cycle.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/update_analysis</span></code> — refreshes on-screen results (no-op when busy).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/status</span></code> — JSON health-check for the busy flag.</p></li>
+</ul>
+<p>A <code class="docutils literal notranslate"><span class="pre">create_app(config)</span></code> factory makes the application fully testable:
+callers can inject a fake scraper and loader to avoid network and
+long-running operations during tests.</p>
+</section>
+<section id="etl-layer-scrape-clean">
+<h2>ETL Layer (Scrape + Clean)<a class="headerlink" href="#etl-layer-scrape-clean" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">src/scrape.py</span></code></dt><dd><p>Uses <code class="docutils literal notranslate"><span class="pre">urllib</span></code> and <code class="docutils literal notranslate"><span class="pre">BeautifulSoup</span></code> to crawl Grad Cafe list pages,
+extracting university, program, degree, GPA, GRE scores, status,
+and comments.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src/clean.py</span></code></dt><dd><p>Normalises raw data — standardises GPA/GRE values, converts dates
+to ISO-8601, strips HTML entities, and unifies status labels.</p>
+</dd>
+</dl>
+</section>
+<section id="database-layer-postgresql">
+<h2>Database Layer (PostgreSQL)<a class="headerlink" href="#database-layer-postgresql" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">src/load_data.py</span></code></dt><dd><p>Creates the <code class="docutils literal notranslate"><span class="pre">applicants</span></code> table (with a <code class="docutils literal notranslate"><span class="pre">UNIQUE</span></code> constraint on
+<code class="docutils literal notranslate"><span class="pre">url</span></code> for idempotency) and bulk-inserts rows using
+<code class="docutils literal notranslate"><span class="pre">psycopg2.extras.execute_values</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">src/query_data.py</span></code></dt><dd><p>Contains individual SQL query functions (Q1–Q9 plus two custom
+queries) and a <code class="docutils literal notranslate"><span class="pre">run_all_queries()</span></code> aggregator that the Flask
+route calls at render time.</p>
+</dd>
+</dl>
+</section>
+<section id="busy-state-policy">
+<h2>Busy-State Policy<a class="headerlink" href="#busy-state-policy" title="Link to this heading"></a></h2>
+<p>Only one pull may run at a time.  The <code class="docutils literal notranslate"><span class="pre">_busy</span></code> flag is set to <code class="docutils literal notranslate"><span class="pre">True</span></code>
+at the start of <code class="docutils literal notranslate"><span class="pre">/pull_data</span></code> and cleared in a <code class="docutils literal notranslate"><span class="pre">finally</span></code> block.
+While busy, both <code class="docutils literal notranslate"><span class="pre">/pull_data</span></code> and <code class="docutils literal notranslate"><span class="pre">/update_analysis</span></code> return
+<strong>HTTP 409</strong> with <code class="docutils literal notranslate"><span class="pre">{&quot;busy&quot;:</span> <span class="pre">true}</span></code>.</p>
+</section>
+<section id="idempotency-strategy">
+<h2>Idempotency Strategy<a class="headerlink" href="#idempotency-strategy" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">url</span></code> column carries a <code class="docutils literal notranslate"><span class="pre">UNIQUE</span></code> constraint.  Inserts use
+<code class="docutils literal notranslate"><span class="pre">ON</span> <span class="pre">CONFLICT</span> <span class="pre">(url)</span> <span class="pre">DO</span> <span class="pre">NOTHING</span></code>, so re-pulling the same data never
+creates duplicate rows.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="setup.html" class="btn btn-neutral float-left" title="Overview &amp; Setup" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

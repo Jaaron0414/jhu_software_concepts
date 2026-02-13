@@ -4,7 +4,7 @@ test_integration_end_to_end.py - Full-flow integration tests.
 These tests exercise the whole pipeline: pull -> DB -> update -> render,
 to make sure all the pieces work together.
 
-Author: Aaron Xu
+Author: Jie Xu
 """
 
 import re

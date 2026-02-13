@@ -4,7 +4,7 @@ test_analysis_format.py - Check that the rendered analysis looks right.
 The assignment requires "Answer:" labels and two-decimal percentages,
 so that's what these tests enforce.
 
-Author: Aaron Xu
+Author: Jie Xu
 """
 
 import re

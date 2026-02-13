@@ -1,0 +1,419 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>src.app &mdash; Grad Cafe Analytics 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Grad Cafe Analytics
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../setup.html">Overview &amp; Setup</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../testing.html">Testing Guide</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Grad Cafe Analytics</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">src.app</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for src.app</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">app.py - Flask web application for Grad Cafe data analysis.</span>
+
+<span class="sd">This is the main web server that shows the analysis dashboard.</span>
+<span class="sd">Users can pull new data from Grad Cafe and refresh results.</span>
+
+<span class="sd">Routes:</span>
+<span class="sd">    GET  /                 - analysis dashboard</span>
+<span class="sd">    POST /pull_data        - kick off a background scrape + load</span>
+<span class="sd">    POST /update_analysis  - refresh results (no-op when busy)</span>
+<span class="sd">    GET  /status           - JSON busy check for frontend polling</span>
+
+<span class="sd">Author: Aaron Xu</span>
+<span class="sd">Course: JHU Modern Software Concepts</span>
+<span class="sd">Date: February 2026</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">psycopg2</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">flask</span><span class="w"> </span><span class="kn">import</span> <span class="n">Flask</span><span class="p">,</span> <span class="n">render_template</span><span class="p">,</span> <span class="n">jsonify</span>
+
+<span class="c1"># NOTE: get_database_url is duplicated in load_data.py and query_data.py.</span>
+<span class="c1"># Ideally we&#39;d have a shared config module, but keeping it simple for now.</span>
+
+
+<div class="viewcode-block" id="get_database_url">
+<a class="viewcode-back" href="../../api.html#src.app.get_database_url">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_database_url</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read DATABASE_URL from the environment, fall back to local default.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+        <span class="s1">&#39;DATABASE_URL&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;postgresql://postgres:196301@localhost:5432/gradcafe&#39;</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_db_connection">
+<a class="viewcode-back" href="../../api.html#src.app.get_db_connection">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_db_connection</span><span class="p">(</span><span class="n">database_url</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Open a psycopg2 connection to the given (or default) database.&quot;&quot;&quot;</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="n">database_url</span> <span class="ow">or</span> <span class="n">get_database_url</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">url</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="run_analysis_queries">
+<a class="viewcode-back" href="../../api.html#src.app.run_analysis_queries">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_analysis_queries</span><span class="p">(</span><span class="n">database_url</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run all nine required queries plus two custom ones.</span>
+
+<span class="sd">    Returns a dict whose keys line up with the Jinja template variables</span>
+<span class="sd">    in index.html.  If database_url is None we use the environment default.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">get_db_connection</span><span class="p">(</span><span class="n">database_url</span><span class="p">)</span>
+    <span class="n">cur</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># Q1: Fall 2026 count</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT COUNT(*) FROM applicants WHERE term = &#39;Fall 2026&#39;&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;q1_fall_2026_count&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Q2: International percentage</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT COUNT(*) FROM applicants&quot;</span><span class="p">)</span>
+        <span class="n">total</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;total_count&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">total</span>
+
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT COUNT(*) FROM applicants &quot;</span>
+            <span class="s2">&quot;WHERE us_or_international = &#39;International&#39;&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;international_count&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT COUNT(*) FROM applicants &quot;</span>
+            <span class="s2">&quot;WHERE us_or_international = &#39;American&#39;&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;american_count&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">total</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">results</span><span class="p">[</span><span class="s1">&#39;international_percentage&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;international_count&#39;</span><span class="p">]</span> <span class="o">/</span> <span class="n">total</span><span class="p">)</span> <span class="o">*</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">2</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">results</span><span class="p">[</span><span class="s1">&#39;international_percentage&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.00</span>
+
+        <span class="c1"># Q3: Average scores</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT AVG(gpa) FROM applicants WHERE gpa IS NOT NULL&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;avg_gpa&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span>
+
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT AVG(gre) FROM applicants WHERE gre IS NOT NULL&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;avg_gre&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span>
+
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT AVG(gre_v) FROM applicants WHERE gre_v IS NOT NULL&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;avg_gre_v&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span>
+
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT AVG(gre_aw) FROM applicants WHERE gre_aw IS NOT NULL&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;avg_gre_aw&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span>
+
+        <span class="c1"># Q4: American Fall 2026 GPA</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT AVG(gpa) FROM applicants &quot;</span>
+            <span class="s2">&quot;WHERE us_or_international = &#39;American&#39; &quot;</span>
+            <span class="s2">&quot;AND term = &#39;Fall 2026&#39; AND gpa IS NOT NULL&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;american_fall_2026_gpa&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span>
+
+        <span class="c1"># Q5: Fall 2025 acceptance rate</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT COUNT(*) FROM applicants WHERE term = &#39;Fall 2025&#39;&quot;</span>
+        <span class="p">)</span>
+        <span class="n">f25_total</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;fall_2025_total&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">f25_total</span>
+
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT COUNT(*) FROM applicants &quot;</span>
+            <span class="s2">&quot;WHERE term = &#39;Fall 2025&#39; AND status ILIKE &#39;</span><span class="si">%%</span><span class="s2">Accept</span><span class="si">%%</span><span class="s2">&#39;&quot;</span>
+        <span class="p">)</span>
+        <span class="n">f25_accepted</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;fall_2025_accepted&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">f25_accepted</span>
+
+        <span class="k">if</span> <span class="n">f25_total</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">results</span><span class="p">[</span><span class="s1">&#39;fall_2025_acceptance_rate&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">f25_accepted</span> <span class="o">/</span> <span class="n">f25_total</span><span class="p">)</span> <span class="o">*</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">2</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">results</span><span class="p">[</span><span class="s1">&#39;fall_2025_acceptance_rate&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.00</span>
+
+        <span class="c1"># Q6: Fall 2026 acceptance GPA</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT AVG(gpa) FROM applicants &quot;</span>
+            <span class="s2">&quot;WHERE term = &#39;Fall 2026&#39; AND status ILIKE &#39;</span><span class="si">%%</span><span class="s2">Accept</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND gpa IS NOT NULL&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;fall_2026_acceptance_gpa&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="mi">0</span>
+
+        <span class="c1"># Q7: JHU Masters CS</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT COUNT(*) FROM applicants &quot;</span>
+            <span class="s2">&quot;WHERE (program ILIKE &#39;</span><span class="si">%%</span><span class="s2">johns hopkins</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;OR program ILIKE &#39;</span><span class="si">%%</span><span class="s2">jhu</span><span class="si">%%</span><span class="s2">&#39;) &quot;</span>
+            <span class="s2">&quot;AND program ILIKE &#39;</span><span class="si">%%</span><span class="s2">computer science</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND degree ILIKE &#39;</span><span class="si">%%</span><span class="s2">master</span><span class="si">%%</span><span class="s2">&#39;&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;jhu_masters_cs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Q8: Top schools PhD CS 2026</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT COUNT(*) FROM applicants &quot;</span>
+            <span class="s2">&quot;WHERE term ILIKE &#39;</span><span class="si">%%</span><span class="s2">2026</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND status ILIKE &#39;</span><span class="si">%%</span><span class="s2">Accept</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND degree ILIKE &#39;</span><span class="si">%%</span><span class="s2">PhD</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND program ILIKE &#39;</span><span class="si">%%</span><span class="s2">computer science</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND (program ILIKE &#39;</span><span class="si">%%</span><span class="s2">georgetown</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;OR program ILIKE &#39;</span><span class="si">%%</span><span class="s2">mit</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;OR program ILIKE &#39;</span><span class="si">%%</span><span class="s2">stanford</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;OR program ILIKE &#39;</span><span class="si">%%</span><span class="s2">carnegie mellon</span><span class="si">%%</span><span class="s2">&#39;)&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;phd_cs_top_schools&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Q9: Using LLM fields</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT COUNT(*) FROM applicants &quot;</span>
+            <span class="s2">&quot;WHERE term ILIKE &#39;</span><span class="si">%%</span><span class="s2">2026</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND status ILIKE &#39;</span><span class="si">%%</span><span class="s2">Accept</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND degree ILIKE &#39;</span><span class="si">%%</span><span class="s2">PhD</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND llm_generated_program ILIKE &#39;</span><span class="si">%%</span><span class="s2">computer science</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;AND (llm_generated_university ILIKE &#39;</span><span class="si">%%</span><span class="s2">georgetown</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;OR llm_generated_university ILIKE &#39;</span><span class="si">%%</span><span class="s2">mit</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;OR llm_generated_university ILIKE &#39;</span><span class="si">%%</span><span class="s2">stanford</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;OR llm_generated_university ILIKE &#39;</span><span class="si">%%</span><span class="s2">carnegie mellon</span><span class="si">%%</span><span class="s2">&#39;)&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;phd_cs_top_schools_llm&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Custom Q1: Top 10 programs</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT llm_generated_program, COUNT(*) AS cnt &quot;</span>
+            <span class="s2">&quot;FROM applicants WHERE llm_generated_program IS NOT NULL &quot;</span>
+            <span class="s2">&quot;GROUP BY llm_generated_program ORDER BY cnt DESC LIMIT 10&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;top_programs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+
+        <span class="c1"># Custom Q2: Acceptance rate by degree</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT degree, COUNT(*) AS total, &quot;</span>
+            <span class="s2">&quot;SUM(CASE WHEN status ILIKE &#39;</span><span class="si">%%</span><span class="s2">Accept</span><span class="si">%%</span><span class="s2">&#39; THEN 1 ELSE 0 END) &quot;</span>
+            <span class="s2">&quot;AS accepted, &quot;</span>
+            <span class="s2">&quot;ROUND(100.0 * SUM(CASE WHEN status ILIKE &#39;</span><span class="si">%%</span><span class="s2">Accept</span><span class="si">%%</span><span class="s2">&#39; &quot;</span>
+            <span class="s2">&quot;THEN 1 ELSE 0 END) / COUNT(*), 2) AS rate &quot;</span>
+            <span class="s2">&quot;FROM applicants WHERE degree IS NOT NULL &quot;</span>
+            <span class="s2">&quot;GROUP BY degree ORDER BY total DESC&quot;</span>
+        <span class="p">)</span>
+        <span class="n">results</span><span class="p">[</span><span class="s1">&#39;acceptance_by_degree&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">results</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_default_scraper</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Import the scrape module and pull ~10 pages of results.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">src.scrape</span><span class="w"> </span><span class="kn">import</span> <span class="n">scrape_data</span>
+    <span class="k">return</span> <span class="n">scrape_data</span><span class="p">(</span><span class="n">result_type</span><span class="o">=</span><span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="n">num_pages</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">delay</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_default_loader</span><span class="p">(</span><span class="n">records</span><span class="p">,</span> <span class="n">database_url</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Import load_data and bulk-insert the records.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">src.load_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">insert_records</span>
+    <span class="n">insert_records</span><span class="p">(</span><span class="n">records</span><span class="p">,</span> <span class="n">database_url</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="create_app">
+<a class="viewcode-back" href="../../api.html#src.app.create_app">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_app</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Application factory — creates and configures the Flask app.</span>
+
+<span class="sd">    Pass a config dict to override DATABASE_URL, SCRAPER_FUNC,</span>
+<span class="sd">    LOADER_FUNC, or TESTING (synchronous pull for test assertions).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span>
+        <span class="vm">__name__</span><span class="p">,</span>
+        <span class="n">template_folder</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">),</span> <span class="s1">&#39;templates&#39;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Defaults</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;DATABASE_URL&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">get_database_url</span><span class="p">()</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;SCRAPER_FUNC&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_default_scraper</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;LOADER_FUNC&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_default_loader</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;_busy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="p">:</span>
+        <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+
+    <span class="c1"># --- Routes ---</span>
+
+    <span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">index</span><span class="p">():</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Main page — runs all queries and renders the dashboard.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">run_analysis_queries</span><span class="p">(</span><span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;DATABASE_URL&#39;</span><span class="p">])</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="c1"># If the DB isn&#39;t set up yet, just show empty results</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="n">render_template</span><span class="p">(</span><span class="s1">&#39;index.html&#39;</span><span class="p">,</span> <span class="n">results</span><span class="o">=</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/pull_data&#39;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;POST&#39;</span><span class="p">])</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pull_data</span><span class="p">():</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Kick off a data pull. Returns 409 if one is already running.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;_busy&#39;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s1">&#39;ok&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s1">&#39;busy&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}),</span> <span class="mi">409</span>
+
+        <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;_busy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">scraper_fn</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;SCRAPER_FUNC&#39;</span><span class="p">]</span>
+        <span class="n">loader_fn</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;LOADER_FUNC&#39;</span><span class="p">]</span>
+        <span class="n">db_url</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;DATABASE_URL&#39;</span><span class="p">]</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_run_pull</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">records</span> <span class="o">=</span> <span class="n">scraper_fn</span><span class="p">()</span>
+                <span class="n">loader_fn</span><span class="p">(</span><span class="n">records</span><span class="p">,</span> <span class="n">db_url</span><span class="p">)</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;_busy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="k">if</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;TESTING&#39;</span><span class="p">):</span>
+            <span class="c1"># Synchronous in test mode so assertions work immediately</span>
+            <span class="n">_run_pull</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">_run_pull</span><span class="p">)</span>
+            <span class="n">thread</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s1">&#39;ok&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}),</span> <span class="mi">200</span>
+
+    <span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/update_analysis&#39;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;POST&#39;</span><span class="p">])</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">update_analysis</span><span class="p">():</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Re-render analysis. Returns 409 when a pull is in progress.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;_busy&#39;</span><span class="p">]:</span>
+            <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s1">&#39;ok&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s1">&#39;busy&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}),</span> <span class="mi">409</span>
+        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s1">&#39;ok&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}),</span> <span class="mi">200</span>
+
+    <span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/status&#39;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">status</span><span class="p">():</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Simple JSON endpoint so the frontend can poll busy state.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s1">&#39;is_running&#39;</span><span class="p">:</span> <span class="n">app</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;_busy&#39;</span><span class="p">]})</span>
+
+    <span class="k">return</span> <span class="n">app</span></div>
+
+
+
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../../api.html#src.app.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Start the dev server on port 5000.&quot;&quot;&quot;</span>
+    <span class="n">application</span> <span class="o">=</span> <span class="n">create_app</span><span class="p">()</span>
+    <span class="n">application</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">5000</span><span class="p">)</span></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

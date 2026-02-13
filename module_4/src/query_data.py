@@ -5,7 +5,7 @@ Each function runs one query and returns its result.  They all accept
 an optional database_url so the test suite can point them at a
 separate test database.
 
-Author: Aaron Xu
+Author: Jie Xu
 Course: JHU Modern Software Concepts
 Date: February 2026
 """

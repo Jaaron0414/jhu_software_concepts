@@ -4,7 +4,7 @@ scrape.py - Web scraper for thegradcafe.com.
 Uses urllib (built-in) for HTTP requests and BeautifulSoup for
 HTML parsing.  Rate-limits requests to be polite to the server.
 
-Author: Aaron Xu
+Author: Jie Xu
 Course: JHU Modern Software Concepts
 Date: February 2026
 """

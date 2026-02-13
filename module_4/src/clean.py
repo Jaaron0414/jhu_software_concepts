@@ -5,7 +5,7 @@ Takes raw scraped data and normalizes it: cleans GPA/GRE values,
 converts dates to ISO format, strips leftover HTML, and
 standardizes status labels (Accepted/Rejected/Waitlisted).
 
-Author: Aaron Xu
+Author: Jie Xu
 Course: JHU Modern Software Concepts
 Date: February 2026
 """

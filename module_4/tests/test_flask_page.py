@@ -4,7 +4,7 @@ test_flask_page.py - Tests for the Flask app factory and the main page.
 Makes sure create_app works, all routes are registered, and
 that GET / renders the expected HTML (buttons, labels, etc.).
 
-Author: Aaron Xu
+Author: Jie Xu
 """
 
 import pytest

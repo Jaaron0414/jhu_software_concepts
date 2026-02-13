@@ -10,7 +10,7 @@ Routes:
     POST /update_analysis  - refresh results (no-op when busy)
     GET  /status           - JSON busy check for frontend polling
 
-Author: Aaron Xu
+Author: Jie Xu
 Course: JHU Modern Software Concepts
 Date: February 2026
 """
