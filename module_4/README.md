@@ -64,7 +64,11 @@ pytest
 pytest -m db
 ```
 
-## Building the docs
+## Documentation
+
+Published on Read the Docs: **https://jhu-software-concepts-jiexu.readthedocs.io/en/latest/**
+
+To build locally:
 
 ```bash
 cd docs
