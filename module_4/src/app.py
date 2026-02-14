@@ -1,62 +1,94 @@
-"""
-app.py - Flask web application for Grad Cafe data analysis.
+"""Flask web application for Grad Cafe data analysis.
 
-This is the main web server that shows the analysis dashboard.
-Users can pull new data from Grad Cafe and refresh results.
+This module serves the analysis dashboard where users can pull new
+data from thegradcafe.com and view aggregate statistics.  It uses
+the ``create_app`` factory pattern so that tests can inject fake
+scraper/loader functions without hitting the network.
 
 Routes:
     GET  /                 - analysis dashboard
     POST /pull_data        - kick off a background scrape + load
-    POST /update_analysis  - refresh results (no-op when busy)
-    GET  /status           - JSON busy check for frontend polling
+    POST /update_analysis  - refresh results (blocked when busy)
+    GET  /status           - JSON busy-flag for frontend polling
 
 Author: Jie Xu
 Course: JHU Modern Software Concepts
 Date: February 2026
 """
 
+from __future__ import annotations
+
 import os
 import threading
+from typing import Any, Callable, Optional
 
 import psycopg2
 from flask import Flask, render_template, jsonify
 
-# NOTE: get_database_url is duplicated in load_data.py and query_data.py.
-# Ideally we'd have a shared config module, but keeping it simple for now.
 
+# ---------------------------------------------------------------------------
+# Database helpers
+# ---------------------------------------------------------------------------
+# NOTE: ``get_database_url`` is duplicated in load_data.py and query_data.py.
+# A shared config module would be cleaner, but keeping it simple for now.
 
-def get_database_url():
-    """Read DATABASE_URL from the environment, fall back to local default."""
+def get_database_url() -> str:
+    """Return the PostgreSQL connection string.
+
+    Reads ``DATABASE_URL`` from the environment; falls back to a
+    local development default so the app works out of the box.
+
+    Returns:
+        The PostgreSQL connection string.
+    """
     return os.environ.get(
         'DATABASE_URL',
         'postgresql://postgres:196301@localhost:5432/gradcafe'
     )
 
 
-def get_db_connection(database_url=None):
-    """Open a psycopg2 connection to the given (or default) database."""
+def get_db_connection(database_url: Optional[str] = None) -> psycopg2.extensions.connection:
+    """Open a new psycopg2 connection.
+
+    Args:
+        database_url: Optional override for the connection string.
+            When ``None``, ``get_database_url()`` is used.
+
+    Returns:
+        A live psycopg2 connection object.
+    """
     url = database_url or get_database_url()
     return psycopg2.connect(url)
 
 
-def run_analysis_queries(database_url=None):
-    """Run all nine required queries plus two custom ones.
+# ---------------------------------------------------------------------------
+# Analysis queries (all nine required + two custom)
+# ---------------------------------------------------------------------------
 
-    Returns a dict whose keys line up with the Jinja template variables
-    in index.html.  If database_url is None we use the environment default.
+def run_analysis_queries(database_url: Optional[str] = None) -> dict[str, Any]:
+    """Execute all analysis queries and return template-ready results.
+
+    The returned dict keys correspond exactly to the Jinja variables
+    used in ``templates/index.html`` (e.g. ``q1_fall_2026_count``).
+
+    Args:
+        database_url: Optional Postgres connection string override.
+
+    Returns:
+        A dictionary of analysis results.  Empty dict on DB error.
     """
-    results = {}
+    results: dict[str, Any] = {}
     conn = get_db_connection(database_url)
     cur = conn.cursor()
 
     try:
-        # Q1: Fall 2026 count
+        # Q1 — How many applicants applied for Fall 2026?
         cur.execute(
             "SELECT COUNT(*) FROM applicants WHERE term = 'Fall 2026'"
         )
         results['q1_fall_2026_count'] = cur.fetchone()[0]
 
-        # Q2: International percentage
+        # Q2 — What percentage of entries are international students?
         cur.execute("SELECT COUNT(*) FROM applicants")
         total = cur.fetchone()[0]
         results['total_count'] = total
@@ -73,6 +105,7 @@ def run_analysis_queries(database_url=None):
         )
         results['american_count'] = cur.fetchone()[0]
 
+        # Percentage needs a guard against division-by-zero
         if total > 0:
             results['international_percentage'] = round(
                 (results['international_count'] / total) * 100, 2
@@ -80,7 +113,7 @@ def run_analysis_queries(database_url=None):
         else:
             results['international_percentage'] = 0.00
 
-        # Q3: Average scores
+        # Q3 — Average GPA, GRE, GRE-V, GRE-AW
         cur.execute(
             "SELECT AVG(gpa) FROM applicants WHERE gpa IS NOT NULL"
         )
@@ -101,7 +134,7 @@ def run_analysis_queries(database_url=None):
         )
         results['avg_gre_aw'] = cur.fetchone()[0] or 0
 
-        # Q4: American Fall 2026 GPA
+        # Q4 — Average GPA of American students in Fall 2026
         cur.execute(
             "SELECT AVG(gpa) FROM applicants "
             "WHERE us_or_international = 'American' "
@@ -109,13 +142,15 @@ def run_analysis_queries(database_url=None):
         )
         results['american_fall_2026_gpa'] = cur.fetchone()[0] or 0
 
-        # Q5: Fall 2025 acceptance rate
+        # Q5 — Fall 2025 acceptance rate
         cur.execute(
             "SELECT COUNT(*) FROM applicants WHERE term = 'Fall 2025'"
         )
         f25_total = cur.fetchone()[0]
         results['fall_2025_total'] = f25_total
 
+        # Using ILIKE '%%Accept%%' so it matches "Accepted", "Accepted via Email", etc.
+        # Double-%% is required because psycopg2 treats a single % as a parameter marker.
         cur.execute(
             "SELECT COUNT(*) FROM applicants "
             "WHERE term = 'Fall 2025' AND status ILIKE '%%Accept%%'"
@@ -130,7 +165,7 @@ def run_analysis_queries(database_url=None):
         else:
             results['fall_2025_acceptance_rate'] = 0.00
 
-        # Q6: Fall 2026 acceptance GPA
+        # Q6 — Average GPA of accepted Fall 2026 applicants
         cur.execute(
             "SELECT AVG(gpa) FROM applicants "
             "WHERE term = 'Fall 2026' AND status ILIKE '%%Accept%%' "
@@ -138,7 +173,7 @@ def run_analysis_queries(database_url=None):
         )
         results['fall_2026_acceptance_gpa'] = cur.fetchone()[0] or 0
 
-        # Q7: JHU Masters CS
+        # Q7 — How many applicants to JHU Masters in Computer Science?
         cur.execute(
             "SELECT COUNT(*) FROM applicants "
             "WHERE (program ILIKE '%%johns hopkins%%' "
@@ -148,7 +183,7 @@ def run_analysis_queries(database_url=None):
         )
         results['jhu_masters_cs'] = cur.fetchone()[0]
 
-        # Q8: Top schools PhD CS 2026
+        # Q8 — 2026 PhD CS acceptances at Georgetown / MIT / Stanford / CMU
         cur.execute(
             "SELECT COUNT(*) FROM applicants "
             "WHERE term ILIKE '%%2026%%' "
@@ -162,7 +197,7 @@ def run_analysis_queries(database_url=None):
         )
         results['phd_cs_top_schools'] = cur.fetchone()[0]
 
-        # Q9: Using LLM fields
+        # Q9 — Same as Q8 but using LLM-generated fields for comparison
         cur.execute(
             "SELECT COUNT(*) FROM applicants "
             "WHERE term ILIKE '%%2026%%' "
@@ -176,7 +211,7 @@ def run_analysis_queries(database_url=None):
         )
         results['phd_cs_top_schools_llm'] = cur.fetchone()[0]
 
-        # Custom Q1: Top 10 programs
+        # Custom Q1 — Top 10 most popular programs (by LLM-cleaned name)
         cur.execute(
             "SELECT llm_generated_program, COUNT(*) AS cnt "
             "FROM applicants WHERE llm_generated_program IS NOT NULL "
@@ -184,7 +219,7 @@ def run_analysis_queries(database_url=None):
         )
         results['top_programs'] = cur.fetchall()
 
-        # Custom Q2: Acceptance rate by degree
+        # Custom Q2 — Acceptance rate broken down by degree type
         cur.execute(
             "SELECT degree, COUNT(*) AS total, "
             "SUM(CASE WHEN status ILIKE '%%Accept%%' THEN 1 ELSE 0 END) "
@@ -197,68 +232,105 @@ def run_analysis_queries(database_url=None):
         results['acceptance_by_degree'] = cur.fetchall()
 
     finally:
+        # Always close the cursor and connection, even if a query fails
         cur.close()
         conn.close()
 
     return results
 
 
-def _default_scraper():
-    """Import the scrape module and pull ~10 pages of results."""
+# ---------------------------------------------------------------------------
+# Default scraper / loader (imported lazily to avoid circular imports)
+# ---------------------------------------------------------------------------
+
+def _default_scraper() -> list[dict]:
+    """Import ``src.scrape`` and pull ~10 pages of results.
+
+    Returns:
+        A list of raw applicant dicts from Grad Cafe.
+    """
     from src.scrape import scrape_data
     return scrape_data(result_type='all', num_pages=10, delay=0.5)
 
 
-def _default_loader(records, database_url):
-    """Import load_data and bulk-insert the records."""
+def _default_loader(records: list[dict], database_url: str) -> None:
+    """Import ``src.load_data`` and bulk-insert the given records.
+
+    Args:
+        records: List of applicant dicts to insert.
+        database_url: PostgreSQL connection string.
+    """
     from src.load_data import insert_records
     insert_records(records, database_url)
 
 
-def create_app(config=None):
-    """Application factory — creates and configures the Flask app.
+# ---------------------------------------------------------------------------
+# Flask application factory
+# ---------------------------------------------------------------------------
 
-    Pass a config dict to override DATABASE_URL, SCRAPER_FUNC,
-    LOADER_FUNC, or TESTING (synchronous pull for test assertions).
+def create_app(config: Optional[dict] = None) -> Flask:
+    """Create and configure the Flask application.
+
+    Uses the *factory pattern* so that tests can inject overrides
+    (e.g. a fake scraper, a test database URL, or ``TESTING=True``
+    for synchronous data pulls).
+
+    Args:
+        config: Optional dict of configuration overrides.  Recognised
+            keys include ``DATABASE_URL``, ``SCRAPER_FUNC``,
+            ``LOADER_FUNC``, and ``TESTING``.
+
+    Returns:
+        A fully configured Flask application instance.
     """
     app = Flask(
         __name__,
         template_folder=os.path.join(os.path.dirname(__file__), 'templates')
     )
 
-    # Defaults
+    # Sensible defaults — overridden by ``config`` dict if provided
     app.config['DATABASE_URL'] = get_database_url()
     app.config['SCRAPER_FUNC'] = _default_scraper
     app.config['LOADER_FUNC'] = _default_loader
-    app.config['_busy'] = False
+    app.config['_busy'] = False  # busy flag prevents concurrent pulls
 
     if config:
         app.config.update(config)
 
-    # --- Routes ---
+    # --- Route definitions ---
 
     @app.route('/')
     def index():
-        """Main page — runs all queries and renders the dashboard."""
+        """Render the main analysis dashboard.
+
+        If the database is unreachable (e.g. first run before any data
+        is loaded), the page still renders with empty results.
+        """
         try:
             results = run_analysis_queries(app.config['DATABASE_URL'])
         except Exception:
-            # If the DB isn't set up yet, just show empty results
+            # DB might not be set up yet — show the page anyway
             results = {}
         return render_template('index.html', results=results)
 
     @app.route('/pull_data', methods=['POST'])
     def pull_data():
-        """Kick off a data pull. Returns 409 if one is already running."""
+        """Start a data-pull cycle (scrape + load).
+
+        Returns:
+            200 with ``{"ok": true}`` when the pull starts.
+            409 with ``{"busy": true}`` if a pull is already running.
+        """
         if app.config['_busy']:
             return jsonify({'ok': False, 'busy': True}), 409
 
         app.config['_busy'] = True
-        scraper_fn = app.config['SCRAPER_FUNC']
-        loader_fn = app.config['LOADER_FUNC']
-        db_url = app.config['DATABASE_URL']
+        scraper_fn: Callable = app.config['SCRAPER_FUNC']
+        loader_fn: Callable = app.config['LOADER_FUNC']
+        db_url: str = app.config['DATABASE_URL']
 
-        def _run_pull():
+        def _run_pull() -> None:
+            """Inner helper — runs scraper then loader; clears busy flag."""
             try:
                 records = scraper_fn()
                 loader_fn(records, db_url)
@@ -266,9 +338,10 @@ def create_app(config=None):
                 app.config['_busy'] = False
 
         if app.config.get('TESTING'):
-            # Synchronous in test mode so assertions work immediately
+            # In test mode, run synchronously so assertions work immediately
             _run_pull()
         else:
+            # In production, run in a background thread to avoid blocking
             thread = threading.Thread(target=_run_pull)
             thread.daemon = True
             thread.start()
@@ -277,21 +350,34 @@ def create_app(config=None):
 
     @app.route('/update_analysis', methods=['POST'])
     def update_analysis():
-        """Re-render analysis. Returns 409 when a pull is in progress."""
+        """Refresh the analysis page.
+
+        Returns:
+            200 with ``{"ok": true}`` on success.
+            409 with ``{"busy": true}`` if a pull is in progress.
+        """
         if app.config['_busy']:
             return jsonify({'ok': False, 'busy': True}), 409
         return jsonify({'ok': True}), 200
 
     @app.route('/status')
     def status():
-        """Simple JSON endpoint so the frontend can poll busy state."""
+        """Return the current busy state as JSON.
+
+        The frontend uses this endpoint to poll whether a pull is
+        still in progress.
+        """
         return jsonify({'is_running': app.config['_busy']})
 
     return app
 
 
-def main():
-    """Start the dev server on port 5000."""
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    """Start the Flask development server on port 5000."""
     application = create_app()
     application.run(debug=True, port=5000)
 

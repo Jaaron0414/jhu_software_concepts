@@ -1,39 +1,71 @@
-"""
-query_data.py - SQL queries for the Grad Cafe analysis.
+"""SQL query functions for the Grad Cafe analysis.
 
-Each function runs one query and returns its result.  They all accept
-an optional database_url so the test suite can point them at a
-separate test database.
+Each public function runs one analytical query against the
+``applicants`` table and returns a structured result.  All functions
+accept an optional ``database_url`` parameter so the test suite can
+redirect them to a dedicated test database.
 
 Author: Jie Xu
 Course: JHU Modern Software Concepts
 Date: February 2026
 """
 
+from __future__ import annotations
+
 import os
+from typing import Any, Optional
+
 import psycopg2
 
 
-def get_database_url():
-    """Read DATABASE_URL from the environment, fall back to local default."""
+# ---------------------------------------------------------------------------
+# Database helpers
+# ---------------------------------------------------------------------------
+
+def get_database_url() -> str:
+    """Return the PostgreSQL connection string.
+
+    Reads ``DATABASE_URL`` from the environment; falls back to a
+    local development default.
+
+    Returns:
+        A PostgreSQL connection string.
+    """
     return os.environ.get(
         'DATABASE_URL',
         'postgresql://postgres:196301@localhost:5432/gradcafe'
     )
 
 
-def get_connection(database_url=None):
-    """Open a psycopg2 connection to the given (or default) database."""
+def get_connection(database_url: Optional[str] = None) -> psycopg2.extensions.connection:
+    """Open a new psycopg2 connection.
+
+    Args:
+        database_url: Optional override.  Defaults to
+            ``get_database_url()``.
+
+    Returns:
+        A live psycopg2 connection object.
+    """
     url = database_url or get_database_url()
     return psycopg2.connect(url)
 
 
-# ---- Individual query functions ----
-# Each opens its own connection for simplicity.
-# TODO: refactor to share a connection if performance matters.
+# ---------------------------------------------------------------------------
+# Individual query functions (Q1 – Q9 + two custom)
+# ---------------------------------------------------------------------------
+# Each function opens its own connection for simplicity.
+# TODO: refactor to share a single connection if performance matters.
 
-def query_fall_2026_count(database_url=None):
-    """Q1: How many entries applied for Fall 2026?"""
+def query_fall_2026_count(database_url: Optional[str] = None) -> int:
+    """Q1: How many applicants applied for Fall 2026?
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        An integer count.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
     cur.execute(
@@ -45,8 +77,16 @@ def query_fall_2026_count(database_url=None):
     return result
 
 
-def query_international_percentage(database_url=None):
-    """Q2: What percentage of entries are international?"""
+def query_international_percentage(database_url: Optional[str] = None) -> dict:
+    """Q2: What percentage of entries are international students?
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        A dict with keys ``total``, ``international``, ``american``,
+        ``other``, and ``percentage``.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
 
@@ -74,6 +114,7 @@ def query_international_percentage(database_url=None):
     cur.close()
     conn.close()
 
+    # Guard against division-by-zero when the table is empty
     percentage = round(
         (international / total) * 100, 2
     ) if total > 0 else 0.00
@@ -87,8 +128,19 @@ def query_international_percentage(database_url=None):
     }
 
 
-def query_average_scores(database_url=None):
-    """Q3: Average GPA, GRE, GRE V, GRE AW for applicants who report them."""
+def query_average_scores(database_url: Optional[str] = None) -> dict:
+    """Q3: Average GPA, GRE, GRE-V, and GRE-AW across all applicants.
+
+    Only applicants who reported each score are included in the
+    respective average (``WHERE ... IS NOT NULL``).
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        A dict with keys ``avg_gpa``, ``avg_gre``, ``avg_gre_v``,
+        and ``avg_gre_aw``.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
 
@@ -115,8 +167,15 @@ def query_average_scores(database_url=None):
     }
 
 
-def query_american_fall_2026_gpa(database_url=None):
-    """Q4: Average GPA of American students in Fall 2026."""
+def query_american_fall_2026_gpa(database_url: Optional[str] = None) -> Optional[float]:
+    """Q4: Average GPA of American students applying for Fall 2026.
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        The average GPA as a float, or ``None``.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
     cur.execute(
@@ -130,8 +189,19 @@ def query_american_fall_2026_gpa(database_url=None):
     return result
 
 
-def query_fall_2025_acceptance_rate(database_url=None):
-    """Q5: What percent of Fall 2025 entries are acceptances?"""
+def query_fall_2025_acceptance_rate(database_url: Optional[str] = None) -> dict:
+    """Q5: What percentage of Fall 2025 entries are acceptances?
+
+    Uses ``ILIKE '%%Accept%%'`` so that variations like "Accepted
+    via Email" are counted.  Double-percent is required because
+    psycopg2 treats ``%`` as a parameter marker.
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        A dict with keys ``total``, ``accepted``, and ``percentage``.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
 
@@ -160,8 +230,15 @@ def query_fall_2025_acceptance_rate(database_url=None):
     }
 
 
-def query_fall_2026_acceptance_gpa(database_url=None):
-    """Q6: Average GPA of accepted Fall 2026 applicants."""
+def query_fall_2026_acceptance_gpa(database_url: Optional[str] = None) -> Optional[float]:
+    """Q6: Average GPA of accepted Fall 2026 applicants.
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        The average GPA as a float, or ``None``.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
     cur.execute(
@@ -175,8 +252,17 @@ def query_fall_2026_acceptance_gpa(database_url=None):
     return result
 
 
-def query_jhu_masters_cs(database_url=None):
-    """Q7: How many applicants to JHU Masters in Computer Science?"""
+def query_jhu_masters_cs(database_url: Optional[str] = None) -> int:
+    """Q7: How many applicants to JHU Masters in Computer Science?
+
+    Matches both "Johns Hopkins" and "JHU" abbreviations via ILIKE.
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        An integer count.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
     cur.execute(
@@ -192,8 +278,17 @@ def query_jhu_masters_cs(database_url=None):
     return result
 
 
-def query_top_schools_phd_cs(database_url=None):
-    """Q8: 2026 PhD CS acceptances at Georgetown/MIT/Stanford/CMU."""
+def query_top_schools_phd_cs(database_url: Optional[str] = None) -> int:
+    """Q8: 2026 PhD CS acceptances at four top schools.
+
+    Schools checked: Georgetown, MIT, Stanford, Carnegie Mellon.
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        An integer count of matching acceptances.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
     cur.execute(
@@ -213,8 +308,18 @@ def query_top_schools_phd_cs(database_url=None):
     return result
 
 
-def query_top_schools_phd_cs_llm(database_url=None):
-    """Q9: Same as Q8 using LLM-generated fields."""
+def query_top_schools_phd_cs_llm(database_url: Optional[str] = None) -> int:
+    """Q9: Same as Q8 but using LLM-generated program/university fields.
+
+    This lets us compare results between raw text matching (Q8) and
+    the LLM-cleaned field matching (Q9).
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        An integer count.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
     cur.execute(
@@ -234,8 +339,15 @@ def query_top_schools_phd_cs_llm(database_url=None):
     return result
 
 
-def query_top_programs(database_url=None):
-    """Custom Q1: Top 10 most popular programs."""
+def query_top_programs(database_url: Optional[str] = None) -> list[tuple]:
+    """Custom Q1: Top 10 most popular programs by applicant count.
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        A list of ``(program_name, count)`` tuples.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
     cur.execute(
@@ -249,8 +361,15 @@ def query_top_programs(database_url=None):
     return results
 
 
-def query_acceptance_by_degree(database_url=None):
-    """Custom Q2: Acceptance rate by degree type."""
+def query_acceptance_by_degree(database_url: Optional[str] = None) -> list[tuple]:
+    """Custom Q2: Acceptance rate broken down by degree type.
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        A list of ``(degree, total, accepted, rate)`` tuples.
+    """
     conn = get_connection(database_url)
     cur = conn.cursor()
     cur.execute(
@@ -268,8 +387,20 @@ def query_acceptance_by_degree(database_url=None):
     return results
 
 
-def run_all_queries(database_url=None):
-    """Convenience wrapper — runs all queries and returns a single dict."""
+# ---------------------------------------------------------------------------
+# Aggregate runner
+# ---------------------------------------------------------------------------
+
+def run_all_queries(database_url: Optional[str] = None) -> dict[str, Any]:
+    """Run every query and return a consolidated results dict.
+
+    Args:
+        database_url: Optional Postgres connection string.
+
+    Returns:
+        A dict with keys ``q1`` through ``q9``, ``custom_1``,
+        and ``custom_2``.
+    """
     return {
         'q1': query_fall_2026_count(database_url),
         'q2': query_international_percentage(database_url),
@@ -285,8 +416,12 @@ def run_all_queries(database_url=None):
     }
 
 
-def main():
-    """Print all query results to the terminal."""
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    """Print all analysis results to the terminal."""
     results = run_all_queries()
     print("=" * 60)
     print("GRAD CAFE DATA ANALYSIS")
